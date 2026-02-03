@@ -1,0 +1,8 @@
+## Append samples of your project ##
+resources:
+- v1alpha1_statichost.yaml
+- v1alpha1_dynamichostautoscaler.yaml
+- v1alpha1_dynamichost.yaml
+- v1alpha1_runner.yaml
+- v1alpha1_claim.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

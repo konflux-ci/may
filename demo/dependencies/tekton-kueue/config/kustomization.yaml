@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://github.com/konflux-ci/tekton-kueue/config/default?ref=90f5e30da72461ecd93f8d287a30fc0a2a941063
+  - workloadpriorityclasses.yaml
+images:
+  - name: konflux-ci/tekton-kueue
+    newName: quay.io/konflux-ci/tekton-kueue
+    newTag: 90f5e30da72461ecd93f8d287a30fc0a2a941063
+namespace: tekton-kueue
+configMapGenerator:
+  - name: tekton-kueue-config
+    namespace: tekton-kueue
+    behavior: replace
+    files:
+      - config.yaml

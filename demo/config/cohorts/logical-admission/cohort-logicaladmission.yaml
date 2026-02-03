@@ -1,0 +1,19 @@
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: Cohort
+metadata:
+  name: pipelineruns-logical-admission
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: Cohort
+metadata:
+  name: aws-linux-arm64
+spec:
+  parentName: pipelineruns-logical-admission
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: Cohort
+metadata:
+  name: aws-linux-amd64
+spec:
+  parentName: pipelineruns-logical-admission

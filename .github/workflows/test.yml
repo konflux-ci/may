@@ -1,0 +1,31 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Run on Ubuntu
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: ["drivers/incluster", "may"]
+
+    defaults:
+      run:
+        working-directory: "./${{ matrix.component }}"
+
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "${{ matrix.component }}/go.mod"
+
+      - name: Running Tests
+        run: |
+          go mod tidy
+          make test

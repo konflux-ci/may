@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug-ha
+  namespace: may-system
+spec:
+  containers:
+  - name: bash
+    image: bash:latest
+    imagePullPolicy: IfNotPresent
+    command:
+      - bash
+      - -c
+    args:
+      - apk add openssh && sleep infinity
+    # Security context to run as non-root (if PUID/PGID are set)
+    securityContext:
+      allowPrivilegeEscalation: false
+    volumeMounts:
+    - readOnly: true
+      name: ssh
+      mountPath: /.ssh/admin
+  volumes:
+  - name: ssh
+    secret:
+      secretName: ssh-aws-host-amd64-1-lztmc-key
+      defaultMode: 0400
+      optional: false

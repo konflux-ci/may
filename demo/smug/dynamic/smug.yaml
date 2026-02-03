@@ -1,0 +1,60 @@
+---
+session: may-demo-dynamic
+root: ''
+attach: true
+windows:
+  - name: demo-run
+    selected: true
+    layout: tiled
+    panes: []
+    commands:
+      - |
+          clear && \
+          echo -n "Press Enter to start demo... " && read && read && \
+          echo "Installing Hosts" && \
+          kubectl apply -k "${root_path}/config/dynamic/hostautoscaler/amd64/" && \
+          tmux select-window -t hosts && \
+          echo "" && echo "Press Enter to install PipelineRuns" && read && \
+          kubectl apply -k "${root_path}/config/dynamic/tenant-pipelinerun-may-dynamic" && \
+          tmux select-window -t demo-watch && \
+          echo "" && echo -n "Press Enter to delete PipelineRuns" && read && echo "" && \
+          kubectl delete -k "${root_path}/config/dynamic/tenant-pipelinerun-may-dynamic" --wait=false && \
+          tmux select-window -t demo-watch && \
+          echo "" && echo "Press Enter to delete the HostAutoscaler" && \
+          kubectl delete -k "${root_path}/config/dynamic/hostautoscaler/amd64/"
+  - name: hosts
+    layout: tiled
+    panes:
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m Runner Pods\033[0m\n\n'; kubectl get pods -n may-system -l 'may.konflux-ci.dev/runner-type=dynamic'"
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m Runners\033[0m\n\n'; kubectl get runners.may.konflux-ci.dev
+            -n may-system"
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m DynamicHosts\033[0m\n\n'; kubectl get dynamichosts.may.konflux-ci.dev
+            -n may-system"
+    commands:
+      - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m DynamicHostAutoscalers\033[0m\n\n'; kubectl get dynamichostautoscalers.may.konflux-ci.dev
+        -n may-system"
+  - name: demo-watch
+    layout: tiled
+    panes:
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m Runners\033[0m\n\n'; kubectl get runners.may.konflux-ci.dev
+            -n may-system"
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m DynamicHosts\033[0m\n\n'; kubectl get dynamichosts.may.konflux-ci.dev
+            -n may-system"
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m Claims\033[0m\n\n'; kubectl get claims.may.konflux-ci.dev
+            -n pipelinerun-may-tenant-dynamic"
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m TaskRuns\033[0m\n'; kubectl get taskruns.tekton.dev
+            -n pipelinerun-may-tenant-dynamic; printf '\n\n\033[0m\033[1m\033[32m==\033[0m\033[1m Pods\033[0m\n'; kubectl get
+            pods -n pipelinerun-may-tenant-dynamic"
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m Workloads\033[0m\n\n'; kubectl get workloads.kueue.x-k8s.io
+            -n pipelinerun-may-tenant-dynamic"
+    commands:
+      - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m PipelineRuns\033[0m\n\n'; kubectl get pipelineruns.tekton.dev
+        -n pipelinerun-may-tenant-dynamic"

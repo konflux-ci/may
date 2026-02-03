@@ -1,0 +1,32 @@
+name: Lint
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    name: Run on Ubuntu
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: ["drivers/incluster", "may"]
+
+    defaults:
+      run:
+        working-directory: "./${{ matrix.component }}"
+
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "${{ matrix.component }}/go.mod"
+
+      - name: Run linter
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.4.0
+          working-directory: "./${{ matrix.component }}"

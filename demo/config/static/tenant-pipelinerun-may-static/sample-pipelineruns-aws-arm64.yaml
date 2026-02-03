@@ -1,0 +1,295 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: sample-pipelinerun-arm64-1
+  labels:
+    app: test
+spec:
+  params:
+  - name: build-platforms
+    value:
+    - "aws-linux-arm64"
+  pipelineSpec:
+    params:
+    - default:
+      - "aws-linux-arm64"
+      description: List of platforms to build the container images on. The available set of values is determined by the configuration of the multi-platform-controller.
+      name: build-platforms
+      type: array
+    tasks:
+    - matrix:
+        params:
+          - name: PLATFORM
+            value:
+              - $(params.build-platforms)
+      name: echo
+      taskSpec:
+        params:
+        - name: PLATFORM
+          type: "string"
+        volumes:
+        - name: ssh
+          secret:
+            secretName: "sample-pipelinerun-arm64-1-echo-pod"
+        steps:
+        - name: echo
+          image: registry.access.redhat.com/ubi9/ubi@sha256:66233eebd72bb5baa25190d4f55e1dc3fff3a9b77186c1f91a0abdb274452072
+          script: |
+            #!/bin/bash
+            echo "The specified platform is: $(params.PLATFORM)"
+            echo "Checking secret existence (this will not show content):"
+            ls -la /etc/secrets/otp || exit 1
+
+            echo "Retrieve the primary key from the otp-server"
+            curl -k --fail-with-body --cacert /etc/secrets/otp/otp-ca -XPOST -d @/etc/secrets/otp/otp $(cat /etc/secrets/otp/otp-server) > /tmp/private-key 
+
+            echo "Print SSH Username@Host"
+            cat /etc/secrets/otp/host
+            echo ""
+            
+            echo "Print Private Key Modulus"
+            openssl rsa -noout -modulus -in /tmp/private-key
+
+            echo "Sleeping for 30 seconds..."
+            sleep 30
+            echo "Done"
+          volumeMounts:
+          - name: ssh
+            mountPath: /etc/secrets/otp
+---
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: sample-pipelinerun-arm64-2
+  labels:
+    app: test
+spec:
+  params:
+  - name: build-platforms
+    value:
+    - "aws-linux-arm64"
+  pipelineSpec:
+    params:
+    - default:
+      - "aws-linux-arm64"
+      description: List of platforms to build the container images on. The available set of values is determined by the configuration of the multi-platform-controller.
+      name: build-platforms
+      type: array
+    tasks:
+    - matrix:
+        params:
+          - name: PLATFORM
+            value:
+              - $(params.build-platforms)
+      name: echo
+      taskSpec:
+        params:
+        - name: PLATFORM
+          type: "string"
+        volumes:
+        - name: ssh
+          secret:
+            secretName: "sample-pipelinerun-arm64-2-echo-pod"
+        steps:
+        - name: echo
+          image: registry.access.redhat.com/ubi9/ubi@sha256:66233eebd72bb5baa25190d4f55e1dc3fff3a9b77186c1f91a0abdb274452072
+          script: |
+            #!/bin/bash
+            echo "The specified platform is: $(params.PLATFORM)"
+            echo "Checking secret existence (this will not show content):"
+            ls -la /etc/secrets/otp || exit 1
+
+            echo "Retrieve the primary key from the otp-server"
+            curl -k --fail-with-body --cacert /etc/secrets/otp/otp-ca -XPOST -d @/etc/secrets/otp/otp $(cat /etc/secrets/otp/otp-server) > /tmp/private-key 
+
+            echo "Print SSH Username@Host"
+            cat /etc/secrets/otp/host
+            echo ""
+            
+            echo "Print Private Key Modulus"
+            openssl rsa -noout -modulus -in /tmp/private-key
+
+            echo "Sleeping for 30 seconds..."
+            sleep 30
+            echo "Done"
+          volumeMounts:
+          - name: ssh
+            mountPath: /etc/secrets/otp
+---
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: sample-pipelinerun-arm64-3
+  labels:
+    app: test
+spec:
+  params:
+  - name: build-platforms
+    value:
+    - "aws-linux-arm64"
+  pipelineSpec:
+    params:
+    - default:
+      - "aws-linux-arm64"
+      description: List of platforms to build the container images on. The available set of values is determined by the configuration of the multi-platform-controller.
+      name: build-platforms
+      type: array
+    tasks:
+    - matrix:
+        params:
+          - name: PLATFORM
+            value:
+              - $(params.build-platforms)
+      name: echo
+      taskSpec:
+        params:
+        - name: PLATFORM
+          type: "string"
+        volumes:
+        - name: ssh
+          secret:
+            secretName: "sample-pipelinerun-arm64-3-echo-pod"
+        steps:
+        - name: echo
+          image: registry.access.redhat.com/ubi9/ubi@sha256:66233eebd72bb5baa25190d4f55e1dc3fff3a9b77186c1f91a0abdb274452072
+          script: |
+            #!/bin/bash
+            echo "The specified platform is: $(params.PLATFORM)"
+            echo "Checking secret existence (this will not show content):"
+            ls -la /etc/secrets/otp || exit 1
+
+            echo "Retrieve the primary key from the otp-server"
+            curl -k --fail-with-body --cacert /etc/secrets/otp/otp-ca -XPOST -d @/etc/secrets/otp/otp $(cat /etc/secrets/otp/otp-server) > /tmp/private-key 
+
+            echo "Print SSH Username@Host"
+            cat /etc/secrets/otp/host
+            echo ""
+            
+            echo "Print Private Key Modulus"
+            openssl rsa -noout -modulus -in /tmp/private-key
+
+            echo "Sleeping for 30 seconds..."
+            sleep 30
+            echo "Done"
+          volumeMounts:
+          - name: ssh
+            mountPath: /etc/secrets/otp
+---
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: sample-pipelinerun-arm64-4
+  labels:
+    app: test
+spec:
+  params:
+  - name: build-platforms
+    value:
+    - "aws-linux-arm64"
+  pipelineSpec:
+    params:
+    - default:
+      - "aws-linux-arm64"
+      description: List of platforms to build the container images on. The available set of values is determined by the configuration of the multi-platform-controller.
+      name: build-platforms
+      type: array
+    tasks:
+    - matrix:
+        params:
+          - name: PLATFORM
+            value:
+              - $(params.build-platforms)
+      name: echo
+      taskSpec:
+        params:
+        - name: PLATFORM
+          type: "string"
+        volumes:
+        - name: ssh
+          secret:
+            secretName: "sample-pipelinerun-arm64-4-echo-pod"
+        steps:
+        - name: echo
+          image: registry.access.redhat.com/ubi9/ubi@sha256:66233eebd72bb5baa25190d4f55e1dc3fff3a9b77186c1f91a0abdb274452072
+          script: |
+            #!/bin/bash
+            echo "The specified platform is: $(params.PLATFORM)"
+            echo "Checking secret existence (this will not show content):"
+            ls -la /etc/secrets/otp || exit 1
+
+            echo "Retrieve the primary key from the otp-server"
+            curl -k --fail-with-body --cacert /etc/secrets/otp/otp-ca -XPOST -d @/etc/secrets/otp/otp $(cat /etc/secrets/otp/otp-server) > /tmp/private-key 
+
+            echo "Print SSH Username@Host"
+            cat /etc/secrets/otp/host
+            echo ""
+            
+            echo "Print Private Key Modulus"
+            openssl rsa -noout -modulus -in /tmp/private-key
+
+            echo "Sleeping for 30 seconds..."
+            sleep 30
+            echo "Done"
+          volumeMounts:
+          - name: ssh
+            mountPath: /etc/secrets/otp
+---
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: sample-pipelinerun-arm64-5
+  labels:
+    app: test
+spec:
+  params:
+  - name: build-platforms
+    value:
+    - "aws-linux-arm64"
+  pipelineSpec:
+    params:
+    - default:
+      - "aws-linux-arm64"
+      description: List of platforms to build the container images on. The available set of values is determined by the configuration of the multi-platform-controller.
+      name: build-platforms
+      type: array
+    tasks:
+    - matrix:
+        params:
+          - name: PLATFORM
+            value:
+              - $(params.build-platforms)
+      name: echo
+      taskSpec:
+        params:
+        - name: PLATFORM
+          type: "string"
+        volumes:
+        - name: ssh
+          secret:
+            secretName: "sample-pipelinerun-arm64-5-echo-pod"
+        steps:
+        - name: echo
+          image: registry.access.redhat.com/ubi9/ubi@sha256:66233eebd72bb5baa25190d4f55e1dc3fff3a9b77186c1f91a0abdb274452072
+          script: |
+            #!/bin/bash
+            echo "The specified platform is: $(params.PLATFORM)"
+            echo "Checking secret existence (this will not show content):"
+            ls -la /etc/secrets/otp || exit 1
+
+            echo "Retrieve the primary key from the otp-server"
+            curl -k --fail-with-body --cacert /etc/secrets/otp/otp-ca -XPOST -d @/etc/secrets/otp/otp $(cat /etc/secrets/otp/otp-server) > /tmp/private-key 
+
+            echo "Print SSH Username@Host"
+            cat /etc/secrets/otp/host
+            echo ""
+            
+            echo "Print Private Key Modulus"
+            openssl rsa -noout -modulus -in /tmp/private-key
+
+            echo "Sleeping for 30 seconds..."
+            sleep 30
+            echo "Done"
+          volumeMounts:
+          - name: ssh
+            mountPath: /etc/secrets/otp

@@ -1,0 +1,47 @@
+---
+session: may-demo-static
+root: ''
+attach: true
+windows:
+  - name: demo-run
+    selected: true
+    layout: tiled
+    panes: []
+    commands:
+      - |
+          clear && \
+          echo "Press Enter to start demo..." && read && read && \
+          kubectl apply -k "${root_path}/config/static/tenant-pipelinerun-may-static" && \
+          kubectl apply -k "${root_path}/config/static/hosts/arm64/" && \
+          tmux select-window -t hosts && \
+          echo "" && echo -n "Press Enter to delete PipelineRuns and StaticHosts" && read && echo "" && \
+          kubectl delete -k "${root_path}/config/static/tenant-pipelinerun-may-static" --wait=false && \
+          tmux select-window -t hosts && \
+          kubectl delete statichosts.may.konflux-ci.dev --wait=true -n may-system aws-host-arm64 && \
+          kubectl delete -k "${root_path}/config/static/hosts/arm64/" --wait=false
+  - name: hosts
+    layout: tiled
+    panes:
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m Runner Pods\033[0m\n\n'; kubectl get pods -n may-system -l 'may.konflux-ci.dev/host=aws-host-arm64'"
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m Runner \033[0m\n\n';  kubectl get runners.may.konflux-ci.dev -n may-system"
+      - commands:
+        - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m StaticHosts \033[0m\n\n';  kubectl get statichosts.may.konflux-ci.dev -n may-system"
+    commands:
+      - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m PipelineRuns \033[0m\n\n';  kubectl get pipelineruns.tekton.dev -n pipelinerun-may-tenant-static"
+  - name: demo-watch
+    layout: tiled
+    panes:
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m Runner \033[0m\n\n'; kubectl get runners.may.konflux-ci.dev -n may-system"
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m Claims \033[0m\n\n'; kubectl get claims.may.konflux-ci.dev -n pipelinerun-may-tenant-static"
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m Pods \033[0m\n\n'; kubectl get pods -n pipelinerun-may-tenant-static"
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m TaskRuns \033[0m\n\n'; kubectl get taskruns.tekton.dev -n pipelinerun-may-tenant-static"
+      - commands:
+          - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m Workloads \033[0m\n\n'; kubectl get workloads.kueue.x-k8s.io -n pipelinerun-may-tenant-static"
+    commands:
+      - watch -t -c -n 1 "printf '\033[0m\033[1m\033[32m==\033[0m\033[1m PipelineRuns \033[0m\n\n'; kubectl get pipelineruns.tekton.dev -n pipelinerun-may-tenant-static"

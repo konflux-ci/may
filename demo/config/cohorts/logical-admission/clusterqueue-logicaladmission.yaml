@@ -1,0 +1,34 @@
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: ClusterQueue
+metadata:
+  name: pipelineruns-logical-admission
+spec:
+  cohort: pipelineruns-logical-admission
+  namespaceSelector:
+    matchLabels:
+      konflux-ci.dev/type: tenant
+  resourceGroups:
+    - coveredResources: [local-linux-x86-64]
+      flavors:
+        - name: local-linux-x86-64
+          resources:
+            - name: local-linux-x86-64
+              nominalQuota: '0'
+    - coveredResources: [aws-linux-arm64]
+      flavors:
+        - name: aws-linux-arm64
+          resources:
+            - name: aws-linux-arm64
+              nominalQuota: '0'
+    - coveredResources: [aws-linux-amd64]
+      flavors:
+        - name: aws-linux-amd64
+          resources:
+            - name: aws-linux-amd64
+              nominalQuota: '5'
+    - coveredResources: [tekton.dev/pipelineruns]
+      flavors:
+        - name: default-flavor
+          resources:
+            - name: tekton.dev/pipelineruns
+              nominalQuota: '5'

@@ -1,0 +1,9 @@
+apiVersion: may.konflux-ci.dev/v1alpha1
+kind: StaticHost
+metadata:
+  labels:
+    app.kubernetes.io/name: may
+    app.kubernetes.io/managed-by: kustomize
+  name: statichost-sample
+spec:
+  # TODO(user): Add fields here

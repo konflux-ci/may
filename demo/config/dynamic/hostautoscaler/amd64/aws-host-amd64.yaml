@@ -1,0 +1,151 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aws-host-amd64
+  namespace: may-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: secret-creator
+  namespace: may-system
+rules:
+  - verbs: [create, patch, get]
+    resources: [secrets]
+    apiGroups: ['']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: aws-host-amd64:secret-creator
+  namespace: may-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: secret-creator
+subjects:
+  - kind: ServiceAccount
+    name: aws-host-amd64
+---
+apiVersion: may.konflux-ci.dev/v1alpha1
+kind: DynamicHostAutoscaler
+metadata:
+  name: aws-host-amd64
+  labels:
+    may.konflux-ci.dev/driver: incluster
+spec:
+  flavor: aws-linux-amd64
+  template:
+    spec:
+      flavor: aws-linux-amd64
+      rootKey:
+        name: inflated-from-provisioner
+      status: Ready
+      runner:
+        resources:
+          aws-linux-amd64: 1
+        hooks:
+          provisioning:
+            - name: ssh-user
+              template:
+                spec:
+                  restartPolicy: Never
+                  serviceAccountName: aws-host-amd64
+                  volumes:
+                    - name: root-key
+                      secret:
+                        secretName: ssh-aws-host-amd64-key
+                        defaultMode: 0400
+                        optional: false
+                  containers:
+                    - name: ssh-user
+                      image: kubectl-openssh:latest
+                      imagePullPolicy: Never
+                      command: [/bin/bash, -c]
+                      env:
+                        - name: RUNNER_NAME
+                          valueFrom:
+                            fieldRef:
+                              fieldPath: metadata.labels['may.konflux-ci.dev/runner']
+                        - name: RUNNER_UID
+                          valueFrom:
+                            fieldRef:
+                              fieldPath: metadata.labels['may.konflux-ci.dev/runner-uid']
+                        - name: USERNAME
+                          valueFrom:
+                            fieldRef:
+                              fieldPath: metadata.labels['may.konflux-ci.dev/runner-user']
+                        - name: SECRET_NAME
+                          valueFrom:
+                            fieldRef:
+                              fieldPath: metadata.labels['may.konflux-ci.dev/runner']
+                        - name: NAMESPACE
+                          valueFrom:
+                            fieldRef:
+                              fieldPath: metadata.namespace
+                        - name: HOST
+                          valueFrom:
+                            fieldRef:
+                              fieldPath: metadata.labels['may.konflux-ci.dev/host']
+                        - name: PORT
+                          value: '22'
+                        - name: USER
+                          value: admin
+                      volumeMounts:
+                        - name: root-key
+                          mountPath: /var/root-key
+                          readOnly: true
+                      args:
+                        - |
+                          #!/bin/bash
+                          # 
+                          # NOTE: This is only to demo that we can create setup a dedicated SSH User in the Host.
+                          # The image used is not supporting multiple users, so in the end we'll always use admin credentials.
+                          set -ex
+
+                          # 1. Define variables
+                          KEY_NAME="${USERNAME}"
+
+                          # 2. Generate the SSH key pair (no passphrase, no user interaction)
+                          ssh-keygen -t rsa -b 4096 -f /tmp/${KEY_NAME} -N ""
+
+                          # 3. Create the Secret using kubectl
+                          echo "SSH key generated. Creating Kubernetes Secret: ${SECRET_NAME}"
+
+                          # KEY_PATH=/tmp/${KEY_NAME} # Disabled as image is not supporting multiple users
+                          # SSH_USER=${USER}  # Disabled as image is not supporting multiple users
+
+                          KEY_PATH=/var/root-key/id_rsa
+                          SSH_USER=${USERNAME}
+                          kubectl create secret generic --dry-run=client -o json \
+                            "${SECRET_NAME}" -n "${NAMESPACE}" \
+                            --from-file id_rsa=${KEY_PATH} \
+                            --from-file id_rsa.pub=${KEY_PATH}.pub \
+                            --from-literal host=${HOST} \
+                            --from-literal port=${PORT} \
+                            --from-literal username=${USERNAME} \
+                            | jq --arg name "${RUNNER_NAME}" \
+                                --arg uid "${RUNNER_UID}" \
+                                '.metadata.ownerReferences = [{"apiVersion": "may.konflux-ci.dev/v1alpha1", "kind": "Runner", "name": $name, "uid": $uid }]' \
+                            | kubectl apply -f -
+
+                          # wait for host to be ready
+                          sleep 15
+
+                          # 4. Add user and register the key in the server
+                          timeout --preserve-status 300s bash -c "until \
+                            ssh -i /var/root-key/id_rsa -o StrictHostKeyChecking=no -p ${PORT} ${USER}@${HOST} \
+                              \"sudo useradd -m ${USERNAME} -p "'$(openssl rand -base64 12)'"\"; do sleep 1; done"
+                          timeout --preserve-status 300s bash -c "until \
+                            ssh -i /var/root-key/id_rsa -o StrictHostKeyChecking=no -p ${PORT} ${USER}@${HOST} \
+                              \"sudo mkdir -p /home/${USERNAME}/.ssh && sudo chown -R ${USER} /home/${USERNAME}/.ssh\"; do sleep 1; done"
+
+                          # scp -i /var/root-key/id_rsa -P "${PORT}" "/tmp/${KEY_NAME}.pub" "${USER}@${HOST}:/home/${USERNAME}/.ssh/authorized_keys"  # Disabled as image is not supporting mutiple users
+                          timeout --preserve-status 300s bash -c "until \
+                            scp -i /var/root-key/id_rsa -P ${PORT} /var/root-key/id_rsa.pub ${USER}@${HOST}:/home/${USERNAME}/.ssh/authorized_keys; do sleep 1; done"
+
+                          # ssh -i /var/root-key/id_rsa -o StrictHostKeyChecking=no -p "${PORT}" "${USER}@${HOST}" \
+                          #   "sudo chown -R ${USERNAME} /home/${USERNAME}/.ssh"
+
+                          echo "Kubernetes Secret '${SECRET_NAME}' created successfully."
