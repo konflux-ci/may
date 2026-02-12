@@ -18,14 +18,14 @@ package provisioner
 
 import (
 	"context"
-	"errors"
 
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 // DynamicHostGarbageCollector reconciles a Claim object
@@ -42,62 +42,28 @@ type DynamicHostGarbageCollector struct {
 // move the current state of the cluster closer to the desired state.
 func (r *DynamicHostGarbageCollector) Reconcile(
 	ctx context.Context,
-	_ ctrl.Request,
+	req ctrl.Request,
 ) (ctrl.Result, error) {
 	l := logf.FromContext(ctx)
 	l.Info("reconciling")
 
-	hh, err := r.retrieveData(ctx)
-	if err != nil {
+	dh := maykonfluxcidevv1alpha1.DynamicHost{}
+	if err := r.Get(ctx, req.NamespacedName, &dh); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	if len(hh) == 0 {
-		return ctrl.Result{}, nil
-	}
-	return ctrl.Result{}, r.deleteDynamicHosts(ctx, hh)
-}
-
-func (r *DynamicHostGarbageCollector) deleteDynamicHosts(
-	ctx context.Context,
-	hosts []maykonfluxcidevv1alpha1.DynamicHost,
-) error {
-	// instantiate DynamicHost
-	errs := []error{}
-	for _, h := range hosts {
-		errs = append(errs, r.Delete(ctx, &h))
-	}
-
-	// create host
-	return errors.Join(errs...)
-}
-
-func (r *DynamicHostGarbageCollector) retrieveData(ctx context.Context) ([]maykonfluxcidevv1alpha1.DynamicHost, error) {
-	// retrieve all DynamicHosts
-	hh := maykonfluxcidevv1alpha1.DynamicHostList{}
-	if err := r.List(ctx, &hh, client.InNamespace(r.Namespace)); err != nil {
-		return nil, err
-	}
-
-	fhh := make([]maykonfluxcidevv1alpha1.DynamicHost, 0, len(hh.Items))
-	for _, h := range hh.Items {
-		if h.Status.State != nil && *h.Status.State == maykonfluxcidevv1alpha1.HostActualStateDrained {
-			fhh = append(fhh, h)
-		}
-	}
-	return fhh, nil
+	return ctrl.Result{}, r.Delete(ctx, &dh)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *DynamicHostGarbageCollector) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&maykonfluxcidevv1alpha1.Claim{}).
-		Watches(&maykonfluxcidevv1alpha1.DynamicHost{},
-			handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []ctrl.Request {
-				// we don't really care about the obj, we just want to be triggered
-				return []ctrl.Request{{NamespacedName: client.ObjectKeyFromObject(obj)}}
-			}),
-		).
+		For(&maykonfluxcidevv1alpha1.DynamicHost{}, builder.WithPredicates(predicate.NewPredicateFuncs(
+			func(object client.Object) bool {
+				dh, ok := object.(*maykonfluxcidevv1alpha1.DynamicHost)
+				return ok && dh.Status.State != nil && *dh.Status.State == maykonfluxcidevv1alpha1.HostActualStateDrained
+			},
+		))).
 		Named("dynamichost-gc").
 		Complete(r)
 }
