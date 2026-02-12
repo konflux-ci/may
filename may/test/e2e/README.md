@@ -111,15 +111,16 @@ DynamicHost is reconciled only when `status.state` is set and not `Pending`; the
 | DynamicHost marked Draining when Runner is deleted | When the DynamicHost’s Runner is deleted (or marked for deletion), May sets DynamicHost `status.state` to Draining; see `dynamichost_test.go` |
 | Finalizer and deletion | When DynamicHost is deleted, the finalizer is removed so the host can be deleted (Runner already gone or deleted by finalizer); see `dynamichost_test.go` |
 
-## 11. DynamicHostAutoscaler (in may)
+## 11. DynamicHostAutoscaler (in may) ✅
 
 The DynamicHost provisioner watches Pending Claims and creates a DynamicHost per Claim when an Autoscaler matches the Claim’s flavor. The GC deletes DynamicHosts in state Drained (scale-down when idle).
 
 | Case | Description |
 |------|-------------|
-| Creates DynamicHost when Claim is Pending and Autoscaler matches flavor | Provisioner creates a DynamicHost named like the Claim, with spec from the Autoscaler template (flavor, runner resources, rootKey, etc.) |
-| Does not create DynamicHost when no Autoscaler matches Claim flavor | When a Claim is Pending but no DynamicHostAutoscaler has the same flavor, no DynamicHost is created |
-| One DynamicHost per Pending Claim | When multiple Pending Claims have matching Autoscalers, the provisioner creates one DynamicHost per Claim (by CreationTimestamp order) |
+| Creates DynamicHost when Claim is Pending and Autoscaler matches flavor | Provisioner creates a DynamicHost named like the Claim, with spec from the Autoscaler template (flavor, runner resources, rootKey, etc.); see `dynamichostautoscaler_test.go` |
+| Does not create DynamicHost when no Autoscaler matches Claim flavor | When a Claim is Pending but no DynamicHostAutoscaler has the same flavor, no DynamicHost is created; see `dynamichostautoscaler_test.go` |
+| One DynamicHost per Pending Claim | When multiple Pending Claims have matching Autoscalers, the provisioner creates one DynamicHost per Claim (by CreationTimestamp order); see `dynamichostautoscaler_test.go` |
+| GC deletes DynamicHost after Runner is deleted | After the Pod (and thus Claim and Runner) is released, the DynamicHost transitions to Drained and the GC deletes it; test verifies the DynamicHost is deleted once the Runner is gone; see `dynamichostautoscaler_test.go` |
 
 ## 12. Edge Cases & Failures
 
@@ -146,7 +147,7 @@ The DynamicHost provisioner watches Pending Claims and creates a DynamicHost per
 
 ## Implementation status
 
-- **Done:** Manager run, metrics, cert-manager, webhook CA, Pod webhook (tenant and non-tenant namespace cases; see `e2e_test.go` and `pod_webhook_test.go`), Claimer (tenant and non-tenant cases; see `claimer_test.go`), Claim/Scheduler (Claim scheduled, Claim pending, single Runner two Claims, Claim deletion; see `scheduler_test.go`), Gater (gate removed when Claimed, gate remains when Pending; see `gater_test.go`), Runner Lifecycle (Runner untouched without condition, Runner reserved, provisioning hooks, cleanup hooks, Runner not deleted when cleaning failed; see `runner_lifecycle_test.go`), RunnerBinder (Secret and Pod config; see `binder_test.go`), Full Flow (happy path and Pod completion in one test; see `full_flow_test.go`), StaticHost (all cases; see `statichost_test.go`), DynamicHost (all cases; see `dynamichost_test.go`), DynamicHostAutoscaler (no DynamicHost when no Autoscaler matches flavor, creates DynamicHost when Autoscaler matches, one DynamicHost per Pending Claim; see `dynamichostautoscaler_test.go`). OTP server from multi-platform-controller is installed in the e2e cluster for RunnerBinder.
+- **Done:** Manager run, metrics, cert-manager, webhook CA, Pod webhook (tenant and non-tenant namespace cases; see `e2e_test.go` and `pod_webhook_test.go`), Claimer (tenant and non-tenant cases; see `claimer_test.go`), Claim/Scheduler (Claim scheduled, Claim pending, single Runner two Claims, Claim deletion; see `scheduler_test.go`), Gater (gate removed when Claimed, gate remains when Pending; see `gater_test.go`), Runner Lifecycle (Runner untouched without condition, Runner reserved, provisioning hooks, cleanup hooks, Runner not deleted when cleaning failed; see `runner_lifecycle_test.go`), RunnerBinder (Secret and Pod config; see `binder_test.go`), Full Flow (happy path and Pod completion in one test; see `full_flow_test.go`), StaticHost (all cases; see `statichost_test.go`), DynamicHost (all cases; see `dynamichost_test.go`), DynamicHostAutoscaler (no DynamicHost when no Autoscaler matches flavor, creates DynamicHost when Autoscaler matches, one DynamicHost per Pending Claim, GC deletes Drained DynamicHosts; see `dynamichostautoscaler_test.go`). OTP server from multi-platform-controller is installed in the e2e cluster for RunnerBinder.
 - **TODO:** Edge cases, multi-namespace / configuration, integration.
 
 ## Running E2E tests
