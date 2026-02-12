@@ -2,7 +2,11 @@ name: Lint
 
 on:
   push:
+    branches:
+    - main
   pull_request:
+    branches:
+    - main
 
 jobs:
   lint:
@@ -10,7 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        component: ["drivers/incluster", "may"]
+        component:
+        - "drivers/incluster"
+        - "drivers/aws"
+        - "may"
 
     defaults:
       run:
@@ -26,7 +33,5 @@ jobs:
           go-version-file: "${{ matrix.component }}/go.mod"
 
       - name: Run linter
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: v2.4.0
-          working-directory: "./${{ matrix.component }}"
+        run: |
+          make lint

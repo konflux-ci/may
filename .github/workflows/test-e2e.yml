@@ -2,7 +2,11 @@ name: E2E Tests
 
 on:
   push:
+    branches:
+    - main
   pull_request:
+    branches:
+    - main
 
 jobs:
   test-e2e:
@@ -10,7 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        component: ["drivers/incluster", "may"]
+        component:
+        - "drivers/incluster"
+        - "drivers/aws"
+        - "may"
 
     defaults:
       run:
