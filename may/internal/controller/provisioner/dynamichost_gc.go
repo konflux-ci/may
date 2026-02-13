@@ -52,7 +52,7 @@ func (r *DynamicHostGarbageCollector) Reconcile(
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, r.Delete(ctx, &dh)
+	return ctrl.Result{}, client.IgnoreNotFound(r.Delete(ctx, &dh))
 }
 
 // SetupWithManager sets up the controller with the Manager.
