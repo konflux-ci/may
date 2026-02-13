@@ -73,8 +73,20 @@ const (
 	// HostActualStateHalted   HostActualState = "Halted"
 )
 
-type HostCommonStatus struct {
+type HostCommonStatusState struct {
+	// State is the actual observed state of the host.
+	// +kubebuilder:validation:Enum:=Pending;Ready;Draining;Drained
+	// Validated by CEL:
+	// * State Cannot be cleared once set.
+	// * Pending State may only be set when state was previously unset.
+	// +kubebuilder:validation:XValidation:rule="self != 'Pending' || oldSelf != 'Ready'",message="Moving back from Ready to Pending is not allowed"
+	// +kubebuilder:validation:XValidation:rule="self != 'Pending' || oldSelf != 'Draining'",message="Moving back from Draining to Pending is not allowed"
+	// +kubebuilder:validation:XValidation:rule="self != 'Pending' || oldSelf != 'Drained'",message="Moving back from Drained to Pending is not allowed"
 	State *HostActualState `json:"state,omitempty"`
+}
+
+type HostCommonStatus struct {
+	HostCommonStatusState `json:",inline"`
 
 	Runners HostStatusRunners `json:"runners,omitempty"`
 }

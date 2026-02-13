@@ -143,6 +143,14 @@ func applySpecificationStatus(yaml string) {
 	Expect(err).NotTo(HaveOccurred(), "failed to apply status subresource")
 }
 
+// applySpecificationStatusOrErr applies the status subresource and returns output and error.
+// Used when the apply is expected to fail (e.g. CEL validation).
+func applySpecificationStatusOrErr(yaml string) (string, error) {
+	cmd := exec.Command("kubectl", "apply", "-f", "-", "--subresource=status", "--server-side")
+	cmd.Stdin = strings.NewReader(yaml)
+	return utils.Run(cmd)
+}
+
 // applySpecificationWithStatus applies the given manifest (spec), then applies the
 // status subresource from the same YAML. The Specification must include spec and status
 func applySpecificationWithStatus(specification string) {

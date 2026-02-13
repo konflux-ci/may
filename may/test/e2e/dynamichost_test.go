@@ -198,4 +198,66 @@ func DynamicHostContexts() {
 			})
 		})
 	})
+
+	Context("DynamicHost status.state CEL validation", func() {
+		const celDynamicHostName = "dynamichost-cel-validation"
+
+		BeforeEach(func() {
+			By("creating DynamicHost with empty status.state")
+			applySpecificationWithStatus(dynamicHostYAML(celDynamicHostName, namespace, dynamichostFlavor, dynamichostFlavor, dynamichostRootKeyName, ""))
+
+			By("adding a e2e finalizer to the DynamicHost to prevent GarbageCollection")
+			addDynamicHostE2EFinalizer(namespace, celDynamicHostName)
+		})
+
+		AfterEach(func() {
+			Eventually(func(g Gomega) {
+				removeDynamicHostE2EFinalizer(g, namespace, celDynamicHostName)
+				deleteDynamicHost(namespace, celDynamicHostName)
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+		})
+
+		DescribeTable("allows to move directly to state", func(s mayv1alpha1.HostActualState) {
+			state := string(s)
+
+			_, err := applySpecificationStatusOrErr(dynamicHostYAML(celDynamicHostName, namespace, dynamichostFlavor, dynamichostFlavor, dynamichostRootKeyName, state))
+			Expect(err).NotTo(HaveOccurred(), "applying status with state "+state+" should be allowed")
+		},
+			Entry("Pending", mayv1alpha1.HostActualStatePending),
+			Entry("Ready", mayv1alpha1.HostActualStateReady),
+			Entry("Drained", mayv1alpha1.HostActualStateDrained),
+			Entry("Draining", mayv1alpha1.HostActualStateDraining),
+		)
+
+		DescribeTable("allows to move from-to", func(f, t mayv1alpha1.HostActualState) {
+			from, to := string(f), string(t)
+			_, err := applySpecificationStatusOrErr(dynamicHostYAML(celDynamicHostName, namespace, dynamichostFlavor, dynamichostFlavor, dynamichostRootKeyName, from))
+			Expect(err).NotTo(HaveOccurred(), "applying status with state "+from+" should be allowed")
+
+			_, err = applySpecificationStatusOrErr(dynamicHostYAML(celDynamicHostName, namespace, dynamichostFlavor, dynamichostFlavor, dynamichostRootKeyName, to))
+			Expect(err).NotTo(HaveOccurred(), "applying status with state "+to+" should be allowed")
+		},
+			Entry("Pending-Ready", mayv1alpha1.HostActualStatePending, mayv1alpha1.HostActualStateReady),
+			Entry("Pending-Draining", mayv1alpha1.HostActualStatePending, mayv1alpha1.HostActualStateDraining),
+			Entry("Pending-Drained", mayv1alpha1.HostActualStatePending, mayv1alpha1.HostActualStateDrained),
+			Entry("Ready-Draining", mayv1alpha1.HostActualStateReady, mayv1alpha1.HostActualStateDraining),
+			Entry("Ready-Drained", mayv1alpha1.HostActualStateReady, mayv1alpha1.HostActualStateDrained),
+			Entry("Draining-Ready", mayv1alpha1.HostActualStateDraining, mayv1alpha1.HostActualStateReady),
+			Entry("Drained-Ready", mayv1alpha1.HostActualStateDrained, mayv1alpha1.HostActualStateReady),
+		)
+
+		DescribeTable("doesn't allow to move from-to", func(f, t mayv1alpha1.HostActualState) {
+			from, to := string(f), string(t)
+			_, err := applySpecificationStatusOrErr(dynamicHostYAML(celDynamicHostName, namespace, dynamichostFlavor, dynamichostFlavor, dynamichostRootKeyName, from))
+			Expect(err).NotTo(HaveOccurred(), "applying status with state "+from+" should be allowed")
+
+			_, err = applySpecificationStatusOrErr(dynamicHostYAML(celDynamicHostName, namespace, dynamichostFlavor, dynamichostFlavor, dynamichostRootKeyName, to))
+			Expect(err).To(HaveOccurred(), "applying status with state "+to+" when already set to "+from+" should be rejected")
+			Expect(err.Error()).To(ContainSubstring("Moving back from " + from + " to " + to + " is not allowed"))
+		},
+			Entry("Ready-Pending", mayv1alpha1.HostActualStateReady, mayv1alpha1.HostActualStatePending),
+			Entry("Draining-Pending", mayv1alpha1.HostActualStateDraining, mayv1alpha1.HostActualStatePending),
+			Entry("Drained-Pending", mayv1alpha1.HostActualStateDrained, mayv1alpha1.HostActualStatePending),
+		)
+	})
 }

@@ -29,6 +29,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	mayv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	"github.com/konflux-ci/may/pkg/claim"
 	"github.com/konflux-ci/may/pkg/constants"
 	"github.com/konflux-ci/may/pkg/runner"
@@ -211,5 +212,64 @@ func StaticHostContexts() {
 				g.Expect(err).To(HaveOccurred(), "StaticHost should be deleted after finalizer removed")
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 		})
+	})
+
+	Context("StaticHost status.state CEL validation", func() {
+		const celStaticHostName = "statichost-cel-validation"
+		const celInstances = 1
+
+		BeforeEach(func() {
+			By("creating StaticHost with empty status.state")
+			applySpecificationWithStatus(staticHostYAML(celStaticHostName, namespace, statichostFlavor, celInstances, statichostFlavor, statichostRootKeyName, ""))
+		})
+
+		AfterEach(func() {
+			deleteStaticHost(namespace, celStaticHostName)
+		})
+
+		DescribeTable("allows to move directly to state", func(s mayv1alpha1.HostActualState) {
+			state := string(s)
+
+			_, err := applySpecificationStatusOrErr(staticHostYAML(celStaticHostName, namespace, statichostFlavor, celInstances, statichostFlavor, statichostRootKeyName, state))
+			Expect(err).NotTo(HaveOccurred(), "applying status with state "+state+" should be allowed")
+		},
+			Entry("Pending", mayv1alpha1.HostActualStatePending),
+			Entry("Ready", mayv1alpha1.HostActualStateReady),
+			Entry("Draining", mayv1alpha1.HostActualStateDraining),
+			Entry("Drained", mayv1alpha1.HostActualStateDrained),
+		)
+
+		DescribeTable("allows to move from-to", func(f, t mayv1alpha1.HostActualState) {
+			from, to := string(f), string(t)
+
+			_, err := applySpecificationStatusOrErr(staticHostYAML(celStaticHostName, namespace, statichostFlavor, celInstances, statichostFlavor, statichostRootKeyName, from))
+			Expect(err).NotTo(HaveOccurred(), "applying status with state "+from+" should be allowed")
+
+			_, err = applySpecificationStatusOrErr(staticHostYAML(celStaticHostName, namespace, statichostFlavor, celInstances, statichostFlavor, statichostRootKeyName, to))
+			Expect(err).NotTo(HaveOccurred(), "applying status with state "+to+" should be allowed")
+		},
+			Entry("Pending-Ready", mayv1alpha1.HostActualStatePending, mayv1alpha1.HostActualStateReady),
+			Entry("Pending-Draining", mayv1alpha1.HostActualStatePending, mayv1alpha1.HostActualStateDraining),
+			Entry("Pending-Drained", mayv1alpha1.HostActualStatePending, mayv1alpha1.HostActualStateDrained),
+			Entry("Ready-Draining", mayv1alpha1.HostActualStateReady, mayv1alpha1.HostActualStateDraining),
+			Entry("Ready-Drained", mayv1alpha1.HostActualStateReady, mayv1alpha1.HostActualStateDrained),
+			Entry("Draining-Ready", mayv1alpha1.HostActualStateDraining, mayv1alpha1.HostActualStateReady),
+			Entry("Drained-Ready", mayv1alpha1.HostActualStateDrained, mayv1alpha1.HostActualStateReady),
+		)
+
+		DescribeTable("doesn't allow to move from-to", func(f, t mayv1alpha1.HostActualState) {
+			from, to := string(f), string(t)
+
+			_, err := applySpecificationStatusOrErr(staticHostYAML(celStaticHostName, namespace, statichostFlavor, celInstances, statichostFlavor, statichostRootKeyName, from))
+			Expect(err).NotTo(HaveOccurred(), "applying status with state "+from+" should be allowed")
+
+			_, err = applySpecificationStatusOrErr(staticHostYAML(celStaticHostName, namespace, statichostFlavor, celInstances, statichostFlavor, statichostRootKeyName, to))
+			Expect(err).To(HaveOccurred(), "applying status with state "+to+" when already set to "+from+" should be rejected")
+			Expect(err.Error()).To(ContainSubstring("Moving back from " + from + " to " + to + " is not allowed"))
+		},
+			Entry("Ready-Pending", mayv1alpha1.HostActualStateReady, mayv1alpha1.HostActualStatePending),
+			Entry("Draining-Pending", mayv1alpha1.HostActualStateDraining, mayv1alpha1.HostActualStatePending),
+			Entry("Drained-Pending", mayv1alpha1.HostActualStateDrained, mayv1alpha1.HostActualStatePending),
+		)
 	})
 }

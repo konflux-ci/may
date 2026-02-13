@@ -17625,7 +17625,24 @@ spec:
                 - stopped
                 type: object
               state:
+                description: |-
+                  State is the actual observed state of the host.
+                  Validated by CEL:
+                  * State Cannot be cleared once set.
+                  * Pending State may only be set when state was previously unset.
+                enum:
+                - Pending
+                - Ready
+                - Draining
+                - Drained
                 type: string
+                x-kubernetes-validations:
+                - message: Moving back from Ready to Pending is not allowed
+                  rule: self != 'Pending' || oldSelf != 'Ready'
+                - message: Moving back from Draining to Pending is not allowed
+                  rule: self != 'Pending' || oldSelf != 'Draining'
+                - message: Moving back from Drained to Pending is not allowed
+                  rule: self != 'Pending' || oldSelf != 'Drained'
             type: object
         required:
         - spec
