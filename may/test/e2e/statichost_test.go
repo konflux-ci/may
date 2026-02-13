@@ -70,8 +70,8 @@ func StaticHostContexts() {
 			By("verifying no Runners are created (controller waits for driver to set state)")
 			runner0Name := fmt.Sprintf("%s-0", staticHostName)
 			Consistently(func(g Gomega) {
-				_, err := getRunnerOrNotFound(g, namespace, runner0Name)
-				g.Expect(err).To(HaveOccurred(), "expected no Runner when status.state is unset")
+				_, err := getRunnerOrErr(g, namespace, runner0Name)
+				g.Expect(err).To(BeKubectlNotFound(), "expected no Runner when status.state is unset")
 			}).WithTimeout(20 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
@@ -81,8 +81,8 @@ func StaticHostContexts() {
 			By("verifying no Runners are created (controller waits for driver to set Ready)")
 			runner0Name := fmt.Sprintf("%s-0", staticHostName)
 			Consistently(func(g Gomega) {
-				_, err := getRunnerOrNotFound(g, namespace, runner0Name)
-				g.Expect(err).To(HaveOccurred(), "expected no Runner when status.state is Pending")
+				_, err := getRunnerOrErr(g, namespace, runner0Name)
+				g.Expect(err).To(BeKubectlNotFound(), "expected no Runner when status.state is Pending")
 			}).WithTimeout(20 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
@@ -179,8 +179,8 @@ func StaticHostContexts() {
 			By("waiting for Runner 2 to be deleted (runner-id outside [0..instances-1])")
 			runner2Name := fmt.Sprintf("%s-2", staticHostName)
 			Eventually(func(g Gomega) {
-				_, err := getRunnerOrNotFound(g, namespace, runner2Name)
-				g.Expect(err).To(HaveOccurred(), "Runner %s should be deleted", runner2Name)
+				_, err := getRunnerOrErr(g, namespace, runner2Name)
+				g.Expect(err).To(BeKubectlNotFound(), "Runner %s should be deleted", runner2Name)
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 
 			By("verifying Runners 0 and 1 still exist")
@@ -200,8 +200,8 @@ func StaticHostContexts() {
 			for i := range instances {
 				runnerName := fmt.Sprintf("%s-%d", staticHostName, i)
 				Eventually(func(g Gomega) {
-					_, err := getRunnerOrNotFound(g, namespace, runnerName)
-					g.Expect(err).To(HaveOccurred(), "Runner %s should be deleted", runnerName)
+					_, err := getRunnerOrErr(g, namespace, runnerName)
+					g.Expect(err).To(BeKubectlNotFound(), "Runner %s should be deleted", runnerName)
 				}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 			}
 

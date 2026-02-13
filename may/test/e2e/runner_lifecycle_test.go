@@ -135,7 +135,7 @@ func RunnerLifecycleContexts() {
 
 			By("waiting for Runner to enter Cleaning and cleanup hook pod to be created")
 			Eventually(func(g Gomega) {
-				r, err := getRunnerOrNotFound(g, namespace, runnerName)
+				r, err := getRunnerOrErr(g, namespace, runnerName)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(runner.IsCleaning(*r)).To(BeTrue())
 			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
@@ -150,8 +150,8 @@ func RunnerLifecycleContexts() {
 
 			By("waiting for cleanup to complete and Runner to be deleted")
 			Eventually(func(g Gomega) {
-				_, err := getRunnerOrNotFound(g, namespace, runnerName)
-				g.Expect(err).To(HaveOccurred(), "Runner should be deleted after cleanup hooks succeed")
+				_, err := getRunnerOrErr(g, namespace, runnerName)
+				g.Expect(err).To(BeKubectlNotFound(), "Runner should be deleted after cleanup hooks succeed")
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
@@ -176,14 +176,14 @@ func RunnerLifecycleContexts() {
 
 			By("waiting for Runner to enter Cleaning and cleanup hook pod to be created")
 			Eventually(func(g Gomega) {
-				r, err := getRunnerOrNotFound(g, namespace, runnerName)
+				r, err := getRunnerOrErr(g, namespace, runnerName)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(runner.IsCleaning(*r)).To(BeTrue())
 			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 
 			By("waiting for cleanup hook to fail and Runner to get CleaningFailed (Runner must not be deleted)")
 			Eventually(func(g Gomega) {
-				r, err := getRunnerOrNotFound(g, namespace, runnerName)
+				r, err := getRunnerOrErr(g, namespace, runnerName)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(runner.IsNotReadyWithReason(*r, runner.ConditionReasonCleaningFailed)).To(BeTrue())
 				g.Expect(r.DeletionTimestamp).NotTo(BeNil(), "Runner should still exist with deletion timestamp")
