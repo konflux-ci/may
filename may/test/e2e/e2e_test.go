@@ -131,7 +131,7 @@ var _ = Describe("Manager", Ordered, func() {
 	SetDefaultEventuallyPollingInterval(time.Second)
 
 	Context("Manager", func() {
-		It("should run successfully", func() {
+		It("should run successfully", Label("smoke"), func() {
 			By("validating that the controller-manager pod is running as expected")
 			verifyControllerUp := func(g Gomega) {
 				// Get the name of the controller-manager pod
@@ -163,7 +163,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(verifyControllerUp).Should(Succeed())
 		})
 
-		It("should ensure the metrics endpoint is serving metrics", func() {
+		It("should ensure the metrics endpoint is serving metrics", Label("smoke"), func() {
 			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
 			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
 				"--dry-run=client",
@@ -262,7 +262,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(verifyMetricsAvailable, 2*time.Minute).Should(Succeed())
 		})
 
-		It("should provisioned cert-manager", func() {
+		It("should provisioned cert-manager", Label("smoke"), func() {
 			By("validating that cert-manager has the certificate Secret")
 			verifyCertManager := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "secrets", "webhook-server-cert", "-n", namespace)
@@ -272,7 +272,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(verifyCertManager).Should(Succeed())
 		})
 
-		It("should have CA injection for mutating webhooks", func() {
+		It("should have CA injection for mutating webhooks", Label("smoke"), func() {
 			By("checking CA injection for mutating webhooks")
 			verifyCAInjection := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get",

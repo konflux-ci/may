@@ -53,7 +53,7 @@ func ClaimerContexts() {
 			_, _ = utils.Run(cmd)
 		})
 
-		It("creates a Claim for Pod with flavor annotation in tenant namespace", func() {
+		It("creates a Claim for Pod with flavor annotation in tenant namespace", Label("smoke"), func() {
 			podName := "pod-claimer-with-flavor"
 			flavorAnnotation := pod.KueueFlavorLabelPrefix + "aws-linux-arm64"
 
