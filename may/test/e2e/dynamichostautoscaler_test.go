@@ -51,7 +51,7 @@ func DynamicHostAutoscalerContexts() {
 
 		AfterAll(func() {
 			By("deleting DynamicHosts created by provisioner (names = Pod/Claim names)")
-			for _, name := range []string{"pod-no-autoscaler", "pod-autoscaler-claim", "pod-autoscaler-1", "pod-autoscaler-2"} {
+			for _, name := range []string{"pod-no-autoscaler", "pod-autoscaler-claim", "pod-autoscaler-1", "pod-autoscaler-2", "pod-autoscaler-gc"} {
 				deleteDynamicHost(namespace, name)
 			}
 			By("deleting DynamicHostAutoscaler")
@@ -129,6 +129,57 @@ func DynamicHostAutoscalerContexts() {
 				h2 := getDynamicHost(g, namespace, pod2Name)
 				g.Expect(h1.Spec.Flavor).To(Equal(autoscalerFlavor))
 				g.Expect(h2.Spec.Flavor).To(Equal(autoscalerFlavor))
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+		})
+
+		It("GC deletes DynamicHost after Runner is deleted", func() {
+			podName := "pod-autoscaler-gc"
+			createPodWithFlavor(podName, autoscalerTestNamespace, autoscalerFlavor)
+			DeferCleanup(func() { deletePod(autoscalerTestNamespace, podName) })
+
+			By("waiting for Claim to be created (Pending)")
+			Eventually(func(g Gomega) {
+				c := getClaim(g, autoscalerTestNamespace, podName)
+				g.Expect(c.Name).To(Equal(podName))
+				g.Expect(claim.IsPending(*c)).To(BeTrue(), "Claim should be Pending until scheduled")
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("waiting for provisioner to create DynamicHost")
+			Eventually(func(g Gomega) {
+				h := getDynamicHost(g, namespace, podName)
+				g.Expect(h.Name).To(Equal(podName))
+				g.Expect(h.Namespace).To(Equal(namespace))
+				g.Expect(h.Spec.Flavor).To(Equal(autoscalerFlavor))
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("patching DynamicHost status to Ready (simulating driver)")
+			statusPatch := `{"status":{"state":"Ready"}}`
+			cmd := exec.Command("kubectl", "patch", "dynamichost", podName, "-n", namespace, "--type=merge", "-p", statusPatch, "--subresource=status")
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("waiting for Runner to be created")
+			Eventually(func(g Gomega) {
+				r := getRunner(g, namespace, podName)
+				g.Expect(r.Name).To(Equal(podName))
+				g.Expect(r.Spec.Flavor).To(Equal(autoscalerFlavor))
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("deleting Pod so Claim and Runner are released")
+			cmd = exec.Command("kubectl", "delete", "pod", podName, "-n", autoscalerTestNamespace)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("waiting for Runner to be gone")
+			Eventually(func(g Gomega) {
+				_, err := getRunnerOrNotFound(g, namespace, podName)
+				g.Expect(err).To(HaveOccurred(), "Runner should be deleted")
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("verifying DynamicHost is deleted after Runner is gone")
+			Eventually(func(g Gomega) {
+				_, err := getDynamicHostOrNotFound(g, namespace, podName)
+				g.Expect(err).To(HaveOccurred(), "DynamicHost should be deleted after Runner is deleted")
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 		})
 	})
