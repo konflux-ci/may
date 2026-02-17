@@ -54,7 +54,7 @@ func SchedulerContexts() {
 			_, _ = utils.Run(cmd)
 		})
 
-		It("schedules Claim when a free Runner (matching flavor) exists", func() {
+		It("schedules Claim when a free Runner (matching flavor) exists", Label("smoke"), func() {
 			runnerName := "runner-schedule-claim"
 			podName := "pod-schedule-claim"
 			applySpecificationWithStatus(runnerYAMLWithReadyStatus(runnerName, namespace, schedulerFlavor))

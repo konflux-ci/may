@@ -57,7 +57,7 @@ func PodWebhookContexts() {
 			_, _ = utils.Run(cmd)
 		})
 
-		It("adds scheduling gate to Pod with flavor annotation", func() {
+		It("adds scheduling gate to Pod with flavor annotation", Label("smoke"), func() {
 			podName := "pod-with-flavor"
 			flavorAnnotation := pod.KueueFlavorLabelPrefix + "aws-linux-arm64"
 

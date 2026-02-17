@@ -58,7 +58,7 @@ func FullFlowContexts() {
 			_, _ = utils.Run(cmd)
 		})
 
-		It("happy path: one Runner exists, create Pod with flavor → Claim created → Claimed → gate removed → Pod scheduled; Pod completion: Pod Succeeded → Claim deleted → Runner released", func() {
+		It("happy path: one Runner exists, create Pod with flavor → Claim created → Claimed → gate removed → Pod scheduled; Pod completion: Pod Succeeded → Claim deleted → Runner released", Label("smoke"), func() {
 			runnerName := "runner-full-flow"
 			podName := "pod-full-flow"
 			expectedKey := "dummy-key-for-e2e"

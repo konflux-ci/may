@@ -56,7 +56,7 @@ func GaterContexts() {
 			_, _ = utils.Run(cmd)
 		})
 
-		It("removes Pod scheduling gate when Claim is Claimed", func() {
+		It("removes Pod scheduling gate when Claim is Claimed", Label("smoke"), func() {
 			runnerName := "runner-gater-claimed"
 			podName := "pod-gater-claimed"
 			applySpecificationWithStatus(runnerYAMLWithReadyStatus(runnerName, namespace, gaterFlavor))
