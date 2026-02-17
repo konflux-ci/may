@@ -221,8 +221,8 @@ func DynamicHostContexts() {
 
 			By("waiting for Runner to be deleted by finalizer")
 			Eventually(func(g Gomega) {
-				_, err := getRunnerOrNotFound(g, namespace, hostName)
-				g.Expect(err).To(HaveOccurred(), "Runner should be deleted")
+				_, err := getRunnerOrErr(g, namespace, hostName)
+				g.Expect(err).To(BeKubectlNotFound(), "Runner should be deleted")
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 
 			By("waiting for DynamicHost to be deleted (finalizer removed)")
