@@ -172,8 +172,8 @@ func DynamicHostAutoscalerContexts() {
 
 			By("waiting for Runner to be gone")
 			Eventually(func(g Gomega) {
-				_, err := getRunnerOrNotFound(g, namespace, podName)
-				g.Expect(err).To(HaveOccurred(), "Runner should be deleted")
+				_, err := getRunnerOrErr(g, namespace, podName)
+				g.Expect(err).To(BeKubectlNotFound(), "Runner should be deleted")
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 
 			By("verifying DynamicHost is deleted after Runner is gone")
