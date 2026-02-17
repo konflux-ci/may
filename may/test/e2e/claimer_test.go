@@ -95,8 +95,8 @@ func ClaimerContexts() {
 
 			By("verifying no Claim is created")
 			Eventually(func(g Gomega) {
-				_, err := getClaimOrNotFound(g, claimerTestNamespace, podName)
-				g.Expect(err).To(HaveOccurred(), "expected no Claim for Pod without flavor")
+				_, err := getClaimOrErr(g, claimerTestNamespace, podName)
+				g.Expect(err).To(BeKubectlNotFound(), "expected no Claim for Pod without flavor")
 			}).Should(Succeed())
 		})
 	})
@@ -133,8 +133,8 @@ func ClaimerContexts() {
 
 			By("verifying no Claim is created")
 			Eventually(func(g Gomega) {
-				_, err := getClaimOrNotFound(g, claimerNonTenantNamespace, podName)
-				g.Expect(err).To(HaveOccurred(), "Claimer must not create Claim in non-tenant namespace")
+				_, err := getClaimOrErr(g, claimerTestNamespace, podName)
+				g.Expect(err).To(BeKubectlNotFound(), "Claimer must not create Claim in non-tenant namespace")
 			}).Should(Succeed())
 		})
 
@@ -152,8 +152,8 @@ func ClaimerContexts() {
 
 			By("verifying no Claim is created")
 			Eventually(func(g Gomega) {
-				_, err := getClaimOrNotFound(g, claimerNonTenantNamespace, podName)
-				g.Expect(err).To(HaveOccurred(), "expected no Claim for Pod without annotation in non-tenant namespace")
+				_, err := getClaimOrErr(g, claimerTestNamespace, podName)
+				g.Expect(err).To(BeKubectlNotFound(), "expected no Claim for Pod without annotation in non-tenant namespace")
 			}).Should(Succeed())
 		})
 	})

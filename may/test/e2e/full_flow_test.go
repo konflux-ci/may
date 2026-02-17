@@ -96,13 +96,13 @@ func FullFlowContexts() {
 
 			By("Pod completion: verifying Claim is deleted and Runner is released")
 			Eventually(func(g Gomega) {
-				_, err := getClaimOrNotFound(g, fullFlowTestNamespace, podName)
-				g.Expect(err).To(HaveOccurred(), "expected Claim to be deleted after Pod completion")
+				_, err := getClaimOrErr(g, fullFlowTestNamespace, podName)
+				g.Expect(err).To(BeKubectlNotFound(), "expected Claim to be deleted after Pod completion")
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 
 			Eventually(func(g Gomega) {
-				_, err := getRunnerOrNotFound(g, namespace, runnerName)
-				g.Expect(err).To(HaveOccurred(), "expected Runner to be released (deleted or InUseBy cleared)")
+				_, err := getRunnerOrErr(g, namespace, runnerName)
+				g.Expect(err).To(BeKubectlNotFound(), "expected Runner to be released (deleted or InUseBy cleared)")
 			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 		})
 	})

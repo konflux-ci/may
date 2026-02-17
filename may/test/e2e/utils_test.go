@@ -114,7 +114,7 @@ func getClaim(g Gomega, ns, name string) *v1alpha1.Claim {
 }
 
 // getClaimOrNotFound returns the Claim if it exists, or an error if the resource is not found.
-func getClaimOrNotFound(g Gomega, ns, name string) (*v1alpha1.Claim, error) {
+func getClaimOrErr(g Gomega, ns, name string) (*v1alpha1.Claim, error) {
 	cmd := exec.Command("kubectl", "get", "claim", name, "-n", ns, "-o", "json")
 	output, err := utils.Run(cmd)
 	if err != nil {
@@ -314,8 +314,8 @@ func deletePod(ns, name string) {
 // Claim still exists after the timeout (30s, polling every 2s).
 func waitForClaimDeleted(ns, claimName string) {
 	Eventually(func(g Gomega) {
-		_, err := getClaimOrNotFound(g, ns, claimName)
-		g.Expect(err).To(HaveOccurred(), "expected Claim %s/%s to be deleted", ns, claimName)
+		_, err := getClaimOrErr(g, ns, claimName)
+		g.Expect(err).To(BeKubectlNotFound(), "expected Claim %s/%s to be deleted", ns, claimName)
 	}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 }
 
@@ -359,7 +359,7 @@ func getRunner(g Gomega, ns, name string) *v1alpha1.Runner {
 
 // getRunnerOrNotFound returns the Runner if it exists; returns an error if the resource
 // is not found (e.g. after finalizer deleted it). Used to assert Runner deletion.
-func getRunnerOrNotFound(g Gomega, ns, name string) (*v1alpha1.Runner, error) {
+func getRunnerOrErr(g Gomega, ns, name string) (*v1alpha1.Runner, error) {
 	cmd := exec.Command("kubectl", "get", "runner", name, "-n", ns, "-o", "json")
 	output, err := utils.Run(cmd)
 	if err != nil {
@@ -394,25 +394,6 @@ spec:
 	return specAndMeta + fmt.Sprintf("status:\n  state: %s\n", statusState)
 }
 
-// runnerStatusReadyYAML returns a minimal Runner YAML (metadata + status) for patching
-// the status subresource so the Runner has Ready=True. Used to drive StaticHost
-// status.runners.ready / status.runners.stopped updates.
-func runnerStatusReadyYAML(name, ns string) string {
-	return fmt.Sprintf(`apiVersion: may.konflux-ci.dev/v1alpha1
-kind: Runner
-metadata:
-  name: %s
-  namespace: %s
-status:
-  conditions:
-  - type: Ready
-    status: "True"
-    reason: Ready
-    message: Ready
-    lastTransitionTime: "2024-01-01T00:00:00Z"
-`, name, ns)
-}
-
 // getStaticHost retrieves a StaticHost by name and namespace via kubectl and decodes it.
 func getStaticHost(g Gomega, ns, name string) *v1alpha1.StaticHost {
 	cmd := exec.Command("kubectl", "get", "statichost", name, "-n", ns, "-o", "json")
@@ -429,6 +410,7 @@ func getStaticHostOrNotFound(g Gomega, ns, name string) (*v1alpha1.StaticHost, e
 	cmd := exec.Command("kubectl", "get", "statichost", name, "-n", ns, "-o", "json")
 	output, err := utils.Run(cmd)
 	if err != nil {
+		g.Expect(err).To(BeKubectlNotFound())
 		return nil, err
 	}
 	var h v1alpha1.StaticHost
@@ -521,6 +503,7 @@ func getDynamicHostOrNotFound(g Gomega, ns, name string) (*v1alpha1.DynamicHost,
 	cmd := exec.Command("kubectl", "get", "dynamichost", name, "-n", ns, "-o", "json")
 	output, err := utils.Run(cmd)
 	if err != nil {
+		g.Expect(err).To(BeKubectlNotFound())
 		return nil, err
 	}
 	var h v1alpha1.DynamicHost

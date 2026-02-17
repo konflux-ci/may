@@ -70,8 +70,8 @@ func DynamicHostContexts() {
 
 			By("verifying no Runner is created (controller waits for driver to set state)")
 			Consistently(func(g Gomega) {
-				_, err := getRunnerOrNotFound(g, namespace, dynamicHostName)
-				g.Expect(err).To(HaveOccurred(), "expected no Runner when status.state is unset")
+				_, err := getRunnerOrErr(g, namespace, dynamicHostName)
+				g.Expect(err).To(BeKubectlNotFound(), "expected no Runner when status.state is unset")
 			}).WithTimeout(20 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
@@ -80,8 +80,8 @@ func DynamicHostContexts() {
 
 			By("verifying no Runner is created (controller waits for driver to set Ready)")
 			Consistently(func(g Gomega) {
-				_, err := getRunnerOrNotFound(g, namespace, dynamicHostName)
-				g.Expect(err).To(HaveOccurred(), "expected no Runner when status.state is Pending")
+				_, err := getRunnerOrErr(g, namespace, dynamicHostName)
+				g.Expect(err).To(BeKubectlNotFound(), "expected no Runner when status.state is Pending")
 			}).WithTimeout(20 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
@@ -158,14 +158,14 @@ func DynamicHostContexts() {
 
 					By("waiting for Runner to be gone")
 					Eventually(func(g Gomega) {
-						_, err := getRunnerOrNotFound(g, namespace, dynamicHostName)
-						g.Expect(err).To(HaveOccurred(), "Runner should be deleted")
+						_, err := getRunnerOrErr(g, namespace, dynamicHostName)
+						g.Expect(err).To(BeKubectlNotFound(), "Runner should be deleted")
 					}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 
 					By("verifying Runner is not recreated")
 					Consistently(func(g Gomega) {
-						_, err := getRunnerOrNotFound(g, namespace, dynamicHostName)
-						g.Expect(err).To(HaveOccurred(), "Runner should not be recreated")
+						_, err := getRunnerOrErr(g, namespace, dynamicHostName)
+						g.Expect(err).To(BeKubectlNotFound(), "Runner should not be recreated")
 					}).WithTimeout(20 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 				})
 

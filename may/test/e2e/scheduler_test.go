@@ -124,8 +124,8 @@ func SchedulerContexts() {
 
 			By("verifying the Runner is released (finalizer deletes the Runner)")
 			Eventually(func(g Gomega) {
-				_, err := getRunnerOrNotFound(g, namespace, runnerName)
-				g.Expect(err).To(HaveOccurred(), "expected Runner to be deleted when Claim is deleted")
+				_, err := getRunnerOrErr(g, namespace, runnerName)
+				g.Expect(err).To(BeKubectlNotFound(), "expected Runner to be deleted when Claim is deleted")
 			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 
 			By("deleting Pods and verifying Claims are deleted")
@@ -157,8 +157,8 @@ func SchedulerContexts() {
 
 			By("verifying the Runner is released (deleted by finalizer)")
 			Eventually(func(g Gomega) {
-				_, err := getRunnerOrNotFound(g, namespace, runnerName)
-				g.Expect(err).To(HaveOccurred(), "expected Runner to be deleted when Claim is deleted")
+				_, err := getRunnerOrErr(g, namespace, runnerName)
+				g.Expect(err).To(BeKubectlNotFound(), "expected Runner to be deleted when Claim is deleted")
 			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 
 			By("deleting Pod and verifying Claim is deleted")
