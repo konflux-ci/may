@@ -1,0 +1,38 @@
+name: Build
+
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+    branches:
+    - main
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component:
+        - "drivers/incluster"
+        - "drivers/aws"
+        - "may"
+        container_tool:
+        - "docker"
+        - "podman"
+        - "buildah"
+
+
+    defaults:
+      run:
+        working-directory: "./${{ matrix.component }}"
+
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v4
+
+      - name: Running Tests
+        run: |
+          CONTAINER_TOOL=${{ matrix.container_tool }} make docker-build
+  
