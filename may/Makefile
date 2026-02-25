@@ -98,7 +98,7 @@ test-e2e-smoke: vet-e2e setup-test-e2e manifests generate fmt vet ## Run only e2
 
 .PHONY: load-image
 load-image:
-	export IMAGE_ARCHIVE=$(shell mktemp -tu controller-XXXXXX.tar) && \
+	IMAGE_ARCHIVE=$(shell mktemp -tu controller-XXXXXX.tar) && \
 		$(CONTAINER_TOOL) save -o "$${IMAGE_ARCHIVE}" $(IMG) && \
 		$(KIND) load image-archive "$${IMAGE_ARCHIVE}" --name $(KIND_CLUSTER) && \
 		rm -f "$${IMAGE_ARCHIVE}"
