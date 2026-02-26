@@ -96,6 +96,13 @@ test-e2e-smoke: vet-e2e setup-test-e2e manifests generate fmt vet ## Run only e2
 	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v -ginkgo.label-filter "smoke" -timeout "$(E2E_TEST_TIMEOUT)"
 	$(MAKE) cleanup-test-e2e
 
+.PHONY: load-image
+load-image:
+	IMAGE_ARCHIVE=$(shell mktemp -tu controller-XXXXXX.tar) && \
+		$(CONTAINER_TOOL) save -o "$${IMAGE_ARCHIVE}" $(IMG) && \
+		$(KIND) load image-archive "$${IMAGE_ARCHIVE}" --name $(KIND_CLUSTER) && \
+		rm -f "$${IMAGE_ARCHIVE}"
+
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
