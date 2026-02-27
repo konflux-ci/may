@@ -35,8 +35,10 @@ var (
 	// Optional Environment Variables:
 	// - CERT_MANAGER_INSTALL_SKIP=true: Skips CertManager installation during test setup.
 	// - OTP_SERVER_INSTALL_SKIP=true: Skips OTP server (multi-platform-controller) installation.
-	skipCertManagerInstall = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true"
-	skipOTPServerInstall   = os.Getenv("OTP_SERVER_INSTALL_SKIP") == "true"
+	// - PROMETHEUS_INSTALL_SKIP=true: Skips prometheus installation.
+	skipCertManagerInstall = boolEnv("CERT_MANAGER_INSTALL_SKIP")
+	skipOTPServerInstall   = boolEnv("OTP_SERVER_INSTALL_SKIP")
+	skipPrometheusInstall  = boolEnv("PROMETHEUS_INSTALL_SKIP")
 	// isCertManagerAlreadyInstalled will be set true when CertManager CRDs be found on the cluster
 	isCertManagerAlreadyInstalled = false
 
@@ -44,6 +46,18 @@ var (
 	// with the code source changes to be tested.
 	projectImage = "example.com/may:v0.0.1"
 )
+
+func boolEnv(envVar string) bool {
+	switch os.Getenv(envVar) {
+	case "true":
+	case "y":
+	case "yes":
+	case "1":
+		return true
+	default:
+	}
+	return false
+}
 
 // TestE2E runs the end-to-end (e2e) test suite for the project. These tests execute in an isolated,
 // temporary environment to validate project changes with the purpose of being used in CI jobs.
@@ -87,9 +101,26 @@ var _ = BeforeSuite(func() {
 		By("installing OTP server (multi-platform-controller)")
 		Expect(utils.InstallOTPServer()).To(Succeed(), "Failed to install OTP server")
 	}
+
+	// ensure a prometheus instance is installed
+	if !skipPrometheusInstall {
+		By("Checking if prometheus is already installed")
+		isPrometheusInstalled := utils.IsPrometheusInstalled()
+		if !isPrometheusInstalled {
+			_, _ = fmt.Fprintln(GinkgoWriter, "Installing Prometheus...")
+			Expect(utils.InstallPrometheus()).To(Succeed(), "Failed to install Prometheus")
+		} else {
+			_, _ = fmt.Fprintln(GinkgoWriter, "Prometheus is already installed, skipping installation...")
+		}
+	}
 })
 
 var _ = AfterSuite(func() {
+	if !skipPrometheusInstall {
+		_, _ = fmt.Fprintln(GinkgoWriter, "Uninstalling Prometheus")
+		Expect(utils.UninstallPrometheus()).To(Succeed(), "Failed to uninstall Prometheus")
+	}
+
 	if !skipOTPServerInstall {
 		_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling OTP server...\n")
 		utils.UninstallOTPServer()
