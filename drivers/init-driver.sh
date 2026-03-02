@@ -42,3 +42,6 @@ kubebuilder create api \
         --external-api-path=github.com/konflux-ci/may/api/v1alpha1 \
         --external-api-domain=konflux-ci.dev \
         --external-api-module=github.com/konflux-ci/may
+
+# Generate Code and Manifests
+make generate manifests
