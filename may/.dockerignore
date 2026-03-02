@@ -10,9 +10,10 @@
 **/*.txt
 bin/
 config/
-*.md
+**/*.md
 Makefile
 PROJECT
 Dockerfile
 .dockerignore
 .gitignore
+demo/
