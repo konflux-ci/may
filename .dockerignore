@@ -15,4 +15,5 @@
 **/Dockerfile
 **/.dockerignore
 **/.gitignore
-**/demo/
+test/
+demo/

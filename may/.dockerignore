@@ -16,4 +16,4 @@ PROJECT
 Dockerfile
 .dockerignore
 .gitignore
-demo/
+test/
