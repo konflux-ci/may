@@ -1,0 +1,17 @@
+# More info: https://docs.docker.com/engine/reference/builder/#dockerignore-file
+
+# Ignore test files
+**/*_test.go
+
+# Auxiliary configuration and documentation files should also be ignored
+**/*.yml
+**/*.yaml
+**/*.txt
+**/bin/
+**/config/
+**/*.md
+**/Makefile
+**/PROJECT
+**/Dockerfile
+**/.dockerignore
+**/.gitignore
