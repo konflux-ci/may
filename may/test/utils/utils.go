@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 /*
 Copyright 2026.
 
@@ -159,7 +162,10 @@ func IsCertManagerCRDsInstalled() bool {
 		"orders.acme.cert-manager.io",
 		"challenges.acme.cert-manager.io",
 	}
+	return CheckCRDs(certManagerCRDs)
+}
 
+func CheckCRDs(crdNames []string) bool {
 	// Execute the kubectl command to get all CRDs
 	cmd := exec.Command("kubectl", "get", "crds")
 	output, err := Run(cmd)
@@ -169,7 +175,7 @@ func IsCertManagerCRDsInstalled() bool {
 
 	// Check if any of the Cert Manager CRDs are present
 	crdList := GetNonEmptyLines(output)
-	for _, crd := range certManagerCRDs {
+	for _, crd := range crdNames {
 		for _, line := range crdList {
 			if strings.Contains(line, crd) {
 				return true
