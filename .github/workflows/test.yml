@@ -17,6 +17,7 @@ jobs:
         component:
         - "drivers/incluster"
         - "drivers/aws"
+        - "drivers/ibm"
         - "may"
 
     defaults:
