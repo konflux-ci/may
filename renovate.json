@@ -56,8 +56,8 @@
   },
   "kustomize": {
     "managerFilePatterns": [
-      "/^/may/config/kustomization\\.ya?ml$/",
-      "/^/drivers/.*/config/kustomization\\.ya?ml$/"
+      "/^may/config/kustomization\\.ya?ml$/",
+      "/^drivers/.*/config/kustomization\\.ya?ml$/"
     ],
     "pinDigests": false
   },
