@@ -30,6 +30,10 @@ spec:
     - linux/arm64
   - name: dockerfile
     value: drivers/incluster/Dockerfile
+  - name: hermetic
+    value: "true"
+  - name: prefetch-input
+    value: '[{"type": "gomod", "path": "drivers/incluster"}]'
   pipelineSpec:
     description: |
       This pipeline is ideal for building multi-arch container images from a Containerfile while maintaining trust after pipeline customization.
@@ -61,11 +65,11 @@ spec:
       description: Skip checks against built image
       name: skip-checks
       type: string
-    - default: "false"
+    - default: "true"
       description: Execute the build with network isolation
       name: hermetic
       type: string
-    - default: ""
+    - default: '[{"type": "gomod", "path": "drivers/incluster"}]'
       description: Build dependencies to be prefetched
       name: prefetch-input
       type: string
