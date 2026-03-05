@@ -1,0 +1,63 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "ignorePaths": [
+    "demo/**"
+  ],
+  "packageRules": [
+    {
+      "matchManagers": [
+        "tekton"
+      ],
+      "prPriority": 10
+    },
+    {
+      "groupName": "go-modules automerge",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+      "automerge": true
+    },
+    {
+      "groupName": "go-modules major",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ]
+    }
+  ],
+  "gomod": {
+    "enabled": true,
+    "postUpdateOptions": [
+      "gomodTidy"
+    ]
+  },
+  "kubernetes": {
+    "managerFilePatterns": [
+      "/^may/config/.*\\.yaml$/",
+      "/^drivers/.*/config/.*\\.yaml$/"
+    ]
+  },
+  "kustomize": {
+    "managerFilePatterns": [
+      "/^may/config/kustomization\\.ya?ml$/",
+      "/^drivers/.*/config/kustomization\\.ya?ml$/"
+    ],
+    "pinDigests": false
+  },
+  "dockerfile": {
+    "enabled": true
+  },
+  "github-actions": {
+    "enabled": true
+  }
+}
