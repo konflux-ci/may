@@ -3,7 +3,7 @@ module github.com/konflux-ci/may/drivers/incluster
 go 1.25.0
 
 require (
-	github.com/konflux-ci/may v0.0.0-00010101000000-000000000000
+	github.com/konflux-ci/may v0.0.0-20260305112605-d81fff8c64eb
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
 	golang.org/x/crypto v0.44.0
