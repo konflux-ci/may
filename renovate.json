@@ -14,13 +14,6 @@
       "prPriority": 10
     },
     {
-      "description": "Automerge GitHub Actions updates",
-      "matchManagers": [
-        "github-actions"
-      ],
-      "automerge": true
-    },
-    {
       "groupName": "go-modules automerge",
       "matchManagers": [
         "gomod"
