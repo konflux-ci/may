@@ -44,7 +44,7 @@ import (
 	"github.com/konflux-ci/may/internal/controller/gater"
 	"github.com/konflux-ci/may/internal/controller/provisioner"
 	schedulerctrl "github.com/konflux-ci/may/internal/controller/scheduler"
-	webhookv1alpha1 "github.com/konflux-ci/may/internal/webhook/v1alpha1"
+	webhookv1 "github.com/konflux-ci/may/internal/webhook/v1"
 	"github.com/konflux-ci/may/pkg/indexer"
 	"github.com/konflux-ci/may/pkg/scheduler"
 	// +kubebuilder:scaffold:imports
@@ -222,8 +222,8 @@ func main() {
 	}
 	// nolint:goconst
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		if err := webhookv1alpha1.SetupPodWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "Claim")
+		if err := webhookv1.SetupPodWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "Failed to create webhook", "webhook", "Pod")
 			os.Exit(1)
 		}
 	}
