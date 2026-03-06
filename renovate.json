@@ -6,6 +6,9 @@
   "ignorePaths": [
     "demo/**"
   ],
+  "ignoreDeps": [
+    "github.com/konflux-ci/may"
+  ],
   "packageRules": [
     {
       "matchManagers": [
