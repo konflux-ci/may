@@ -88,13 +88,13 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 
 .PHONY: test-e2e
 test-e2e: vet-e2e setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout "$(E2E_TEST_TIMEOUT)"
-	$(MAKE) cleanup-test-e2e
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) ENABLE_COVERAGE=$(ENABLE_COVERAGE) go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout "$(E2E_TEST_TIMEOUT)"
+	@if [ "$(ENABLE_COVERAGE)" != "true" ]; then $(MAKE) cleanup-test-e2e; fi
 
 .PHONY: test-e2e-smoke
 test-e2e-smoke: vet-e2e setup-test-e2e manifests generate fmt vet ## Run only e2e smoke tests (labeled with smoke).
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v -ginkgo.label-filter "smoke" -timeout "$(E2E_TEST_TIMEOUT)"
-	$(MAKE) cleanup-test-e2e
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) ENABLE_COVERAGE=$(ENABLE_COVERAGE) go test -tags=e2e ./test/e2e/ -v -ginkgo.v -ginkgo.label-filter "smoke" -timeout "$(E2E_TEST_TIMEOUT)"
+	@if [ "$(ENABLE_COVERAGE)" != "true" ]; then $(MAKE) cleanup-test-e2e; fi
 
 .PHONY: load-image
 load-image:
@@ -132,9 +132,11 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
+ENABLE_COVERAGE ?= false
+
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build --build-arg ENABLE_COVERAGE=$(ENABLE_COVERAGE) -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

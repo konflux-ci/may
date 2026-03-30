@@ -12,17 +12,32 @@ jobs:
   test-e2e:
     name: Run on Ubuntu
     runs-on: ubuntu-latest
+    # Required for OIDC authentication with Codecov
+    permissions:
+      id-token: write
+      contents: read
     strategy:
       matrix:
-        component:
-        - "drivers/incluster"
-        - "drivers/aws"
-        - "drivers/ibm"
-        - "may"
+        include:
+        - component: "drivers/incluster"
+          namespace: "may-system"
+          label_selector: "control-plane=incluster-driver"
+        - component: "drivers/aws"
+          namespace: "driver-aws-system"
+          label_selector: "control-plane=controller-manager"
+        - component: "drivers/ibm"
+          namespace: "driver-ibm-system"
+          label_selector: "control-plane=controller-manager"
+        - component: "may"
+          namespace: "may-system"
+          label_selector: "control-plane=controller-manager"
 
     defaults:
       run:
         working-directory: "./${{ matrix.component }}"
+
+    env:
+      ENABLE_COVERAGE: "true"
 
     steps:
       - name: Clone the code
@@ -42,17 +57,54 @@ jobs:
       - name: Verify kind installation
         run: kind version
 
-      - name: Running Test e2e
+      - name: Run e2e tests with coverage instrumentation
         run: |
           go mod tidy
           make test-e2e
 
+      - name: Collect e2e coverage from instrumented pods
+        if: always()
+        run: |
+          mkdir -p coverage-output && chmod 777 coverage-output
+          cp $HOME/.kube/config /tmp/kubeconfig && chmod 644 /tmp/kubeconfig
+          podman run --rm \
+            --network host \
+            -v /tmp/kubeconfig:/kubeconfig:ro \
+            -v $PWD/coverage-output:/workspace/coverage-output \
+            -e KUBECONFIG=/kubeconfig \
+            quay.io/konflux-ci/konflux-devprod/coverport-cli \
+            collect \
+              --namespace=${{ matrix.namespace }} \
+              --label-selector=${{ matrix.label_selector }} \
+              --test-name=e2e-tests \
+              --output=/workspace/coverage-output || true
+
+      - name: Upload e2e coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          flags: e2e-tests
+          directory: coverage-output
+          fail_ci_if_error: false
+
+      - name: Cleanup Kind cluster
+        if: always()
+        run: make cleanup-test-e2e
+
   test-e2e-smoke:
     name: Smoke tests (may)
     runs-on: ubuntu-latest
+    # Required for OIDC authentication with Codecov
+    permissions:
+      id-token: write
+      contents: read
     defaults:
       run:
         working-directory: "./may"
+
+    env:
+      ENABLE_COVERAGE: "true"
 
     steps:
       - name: Clone the code
@@ -72,7 +124,37 @@ jobs:
       - name: Verify kind installation
         run: kind version
 
-      - name: Running smoke tests
+      - name: Run smoke tests with coverage instrumentation
         run: |
           go mod tidy
           make test-e2e-smoke
+
+      - name: Collect e2e coverage from instrumented pods
+        if: always()
+        run: |
+          mkdir -p coverage-output && chmod 777 coverage-output
+          cp $HOME/.kube/config /tmp/kubeconfig && chmod 644 /tmp/kubeconfig
+          podman run --rm \
+            --network host \
+            -v /tmp/kubeconfig:/kubeconfig:ro \
+            -v $PWD/coverage-output:/workspace/coverage-output \
+            -e KUBECONFIG=/kubeconfig \
+            quay.io/konflux-ci/konflux-devprod/coverport-cli \
+            collect \
+              --namespace=may-system \
+              --label-selector=control-plane=controller-manager \
+              --test-name=e2e-tests \
+              --output=/workspace/coverage-output || true
+
+      - name: Upload e2e smoke coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          flags: e2e-tests
+          directory: coverage-output
+          fail_ci_if_error: false
+
+      - name: Cleanup Kind cluster
+        if: always()
+        run: make cleanup-test-e2e
