@@ -1,5 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "timezone": "UTC",
+  "schedule": ["before 7am on Monday"],
+  "minimumReleaseAge": "3 days",
   "extends": [
     "config:recommended"
   ],
