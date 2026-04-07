@@ -87,10 +87,10 @@ test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expect
 	$(MAKE) cleanup-test-e2e
 
 .PHONY: test-e2e-coverage
-test-e2e-coverage: vet-e2e setup-test-e2e manifests generate fmt vet ## Run the e2e tests with coverage. Expected an isolated environment using Kind.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout "$(E2E_TEST_TIMEOUT)" -coverprofile=e2e-coverage.out
+test-e2e-coverage: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v -coverprofile=e2e-coverage.out
 	$(MAKE) cleanup-test-e2e
-	
+
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
