@@ -47,5 +47,5 @@ jobs:
         with:
           use_oidc: true
           flags: unit-tests
-          files: cover.out
+          files: ${{ matrix.component }}/cover.out
           fail_ci_if_error: false

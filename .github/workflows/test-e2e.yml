@@ -56,7 +56,7 @@ jobs:
         with:
           use_oidc: true
           flags: e2e-tests
-          files: e2e-coverage.out
+          files: ${{ matrix.component }}/e2e-coverage.out
           fail_ci_if_error: false
 
   test-e2e-smoke:
@@ -98,5 +98,5 @@ jobs:
         with:
           use_oidc: true
           flags: e2e-tests
-          files: e2e-coverage.out
+          files: may/e2e-coverage.out
           fail_ci_if_error: false
