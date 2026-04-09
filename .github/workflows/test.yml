@@ -12,6 +12,10 @@ jobs:
   test:
     name: Run on Ubuntu
     runs-on: ubuntu-latest
+    # for OIDC authentication with Codecov
+    permissions:
+      id-token: write
+      contents: read
     strategy:
       matrix:
         component:
@@ -33,7 +37,15 @@ jobs:
         with:
           go-version-file: "${{ matrix.component }}/go.mod"
 
-      - name: Running Tests
+      - name: Running Tests coverage
         run: |
           go mod tidy
           make test
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          flags: unit-tests
+          files: ${{ matrix.component }}/cover.out
+          fail_ci_if_error: false

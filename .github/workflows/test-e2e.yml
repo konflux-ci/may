@@ -12,6 +12,10 @@ jobs:
   test-e2e:
     name: Run on Ubuntu
     runs-on: ubuntu-latest
+    # for OIDC authentication with Codecov
+    permissions:
+      id-token: write
+      contents: read
     strategy:
       matrix:
         component:
@@ -42,14 +46,26 @@ jobs:
       - name: Verify kind installation
         run: kind version
 
-      - name: Running Test e2e
+      - name: Running Test e2e coverage
         run: |
           go mod tidy
-          make test-e2e
+          make test-e2e-coverage
+
+      - name: Upload e2e coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          flags: e2e-tests
+          files: ${{ matrix.component }}/e2e-coverage.out
+          fail_ci_if_error: false
 
   test-e2e-smoke:
     name: Smoke tests (may)
     runs-on: ubuntu-latest
+        # for OIDC authentication with Codecov
+    permissions:
+      id-token: write
+      contents: read
     defaults:
       run:
         working-directory: "./may"
@@ -72,7 +88,15 @@ jobs:
       - name: Verify kind installation
         run: kind version
 
-      - name: Running smoke tests
+      - name: Running smoke tests coverage
         run: |
           go mod tidy
-          make test-e2e-smoke
+          make test-e2e-smoke-coverage
+
+      - name: Upload e2e smoke coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          flags: e2e-tests
+          files: may/e2e-coverage.out
+          fail_ci_if_error: false
