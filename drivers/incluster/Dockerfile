@@ -2,6 +2,7 @@
 FROM registry.access.redhat.com/ubi10/go-toolset@sha256:3712c9b5021efb3d0d92d72d84342fe8dce2783cdd9f286e87dff86165977b16 AS builder
 ARG TARGETOS
 ARG TARGETARCH
+ARG ENABLE_COVERAGE=false
 
 WORKDIR /workspace/may/
 COPY may/api api
@@ -17,12 +18,14 @@ RUN go mod download
 # Copy the go source (relies on .dockerignore to filter)
 COPY drivers/incluster/ .
 
-# Build
-# the GOARCH has no default value to allow the binary to be built according to the host where the command
-# was called. For example, if we call make docker-build in a local env which has the Apple Silicon M1 SO
-# the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
-# by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o /tmp/manager cmd/main.go
+# Build with or without coverage instrumentation
+RUN if [ "$ENABLE_COVERAGE" = "true" ]; then \
+        echo "Building with coverage instrumentation..."; \
+        CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -cover -covermode=atomic -tags=coverage -o /tmp/manager ./cmd; \
+    else \
+        echo "Building production binary..."; \
+        CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o /tmp/manager cmd/main.go; \
+    fi
 
 FROM registry.access.redhat.com/ubi10/ubi-micro@sha256:f86852f349dcd2b9ebccef4c8a46fdb75ff2fef9fde8581cef1feddb706be7ba
 WORKDIR /

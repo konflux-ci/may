@@ -21,6 +21,7 @@ package e2e
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -65,8 +66,14 @@ var _ = Describe("Manager", Ordered, func() {
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
-	// and deleting the namespace.
+	// and deleting the namespace. When ENABLE_COVERAGE is set, skip cleanup so that coverport can
+	// collect coverage data from the still-running pods before the Kind cluster is deleted.
 	AfterAll(func() {
+		if os.Getenv("ENABLE_COVERAGE") == "true" {
+			By("skipping cleanup: ENABLE_COVERAGE is set, pods kept running for coverage collection")
+			return
+		}
+
 		By("cleaning up the curl pod for metrics")
 		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
 		_, _ = utils.Run(cmd)

@@ -72,7 +72,8 @@ func TestE2E(t *testing.T) {
 var _ = BeforeSuite(func() {
 	By("building the manager(Operator) image")
 	imgParam := fmt.Sprintf("IMG=%s", projectImage)
-	cmd := exec.Command("make", "docker-build", imgParam)
+	coverageParam := fmt.Sprintf("ENABLE_COVERAGE=%s", os.Getenv("ENABLE_COVERAGE"))
+	cmd := exec.Command("make", "docker-build", imgParam, coverageParam)
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
 
@@ -116,6 +117,11 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
+	if os.Getenv("ENABLE_COVERAGE") == "true" {
+		_, _ = fmt.Fprintln(GinkgoWriter, "skipping AfterSuite teardown: ENABLE_COVERAGE is set, keeping dependencies for coverage collection")
+		return
+	}
+
 	if !skipPrometheusInstall {
 		_, _ = fmt.Fprintln(GinkgoWriter, "Uninstalling Prometheus")
 		Expect(utils.UninstallPrometheus()).To(Succeed(), "Failed to uninstall Prometheus")
