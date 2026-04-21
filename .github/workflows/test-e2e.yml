@@ -59,7 +59,7 @@ jobs:
 
       - name: Run e2e tests with coverage instrumentation
         run: |
-          go mod tidy
+          go mod tidy -tags=coverage
           make test-e2e
 
       - name: Collect e2e coverage from instrumented pods
@@ -137,7 +137,7 @@ jobs:
 
       - name: Run smoke tests with coverage instrumentation
         run: |
-          go mod tidy
+          go mod tidy -tags=coverage
           make test-e2e-smoke
 
       - name: Collect e2e coverage from instrumented pods
