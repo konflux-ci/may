@@ -101,10 +101,6 @@ jobs:
           files: ${{ matrix.component }}/coverage-output/e2e-coverage.out
           fail_ci_if_error: false
 
-      - name: Cleanup Kind cluster
-        if: always()
-        run: make cleanup-test-e2e
-
   test-e2e-smoke:
     name: Smoke tests (may)
     runs-on: ubuntu-latest
@@ -180,7 +176,3 @@ jobs:
           flags: e2e-tests
           files: may/coverage-output/e2e-coverage.out
           fail_ci_if_error: false
-
-      - name: Cleanup Kind cluster
-        if: always()
-        run: make cleanup-test-e2e
