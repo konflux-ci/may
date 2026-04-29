@@ -50,7 +50,8 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	By("building the manager image")
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", managerImage))
+	coverageParam := fmt.Sprintf("ENABLE_COVERAGE=%s", os.Getenv("ENABLE_COVERAGE"))
+	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", managerImage), coverageParam)
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
 
@@ -64,6 +65,11 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
+	if os.Getenv("ENABLE_COVERAGE") == "true" {
+		_, _ = fmt.Fprintln(GinkgoWriter, "skipping AfterSuite teardown: ENABLE_COVERAGE is set, keeping dependencies for coverage collection")
+		return
+	}
+
 	teardownCertManager()
 })
 

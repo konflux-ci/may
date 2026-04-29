@@ -57,7 +57,8 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	By("building the manager(Operator) image")
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
+	coverageParam := fmt.Sprintf("ENABLE_COVERAGE=%s", os.Getenv("ENABLE_COVERAGE"))
+	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage), coverageParam)
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
 
@@ -84,6 +85,11 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
+	if os.Getenv("ENABLE_COVERAGE") == "true" {
+		_, _ = fmt.Fprintln(GinkgoWriter, "skipping AfterSuite teardown: ENABLE_COVERAGE is set, keeping dependencies for coverage collection")
+		return
+	}
+
 	// Teardown CertManager after the suite if not skipped and if it was not already installed
 	if !skipCertManagerInstall && !isCertManagerAlreadyInstalled {
 		_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling CertManager...\n")

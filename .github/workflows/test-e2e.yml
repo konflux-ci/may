@@ -18,15 +18,26 @@ jobs:
       contents: read
     strategy:
       matrix:
-        component:
-        - "drivers/incluster"
-        - "drivers/aws"
-        - "drivers/ibm"
-        - "may"
+        include:
+        - component: "drivers/incluster"
+          namespace: "may-system"
+          label_selector: "control-plane=incluster-driver"
+        - component: "drivers/aws"
+          namespace: "driver-aws-system"
+          label_selector: "control-plane=controller-manager"
+        - component: "drivers/ibm"
+          namespace: "driver-ibm-system"
+          label_selector: "control-plane=controller-manager"
+        - component: "may"
+          namespace: "may-system"
+          label_selector: "control-plane=controller-manager"
 
     defaults:
       run:
         working-directory: "./${{ matrix.component }}"
+
+    env:
+      ENABLE_COVERAGE: "true"
 
     steps:
       - name: Clone the code
@@ -46,29 +57,63 @@ jobs:
       - name: Verify kind installation
         run: kind version
 
-      - name: Running Test e2e coverage
+      - name: Run e2e tests with coverage instrumentation
         run: |
           go mod tidy
-          make test-e2e-coverage
+          make test-e2e
+
+      - name: Collect e2e coverage from instrumented pods
+        if: always()
+        run: |
+          mkdir -p coverage-output && chmod 700 coverage-output
+          cp $HOME/.kube/config /tmp/kubeconfig && chmod 600 /tmp/kubeconfig
+          podman run --rm \
+            --network host \
+            --user $(id -u):$(id -g) \
+            -v /tmp/kubeconfig:/kubeconfig:ro \
+            -v $PWD/coverage-output:/workspace/coverage-output \
+            -e KUBECONFIG=/kubeconfig \
+            quay.io/konflux-ci/konflux-devprod/coverport-cli@sha256:9a2d0a42fcc0dcea31c1b20b2752bb4dfe76f92a99314968e24f525c782a03f1 \
+            collect \
+              --namespace=${{ matrix.namespace }} \
+              --label-selector=${{ matrix.label_selector }} \
+              --test-name=e2e-tests \
+              --output=/workspace/coverage-output
+
+      - name: Prepare coverage for upload
+        if: always()
+        run: |
+          coverage_file=$(find coverage-output -name "coverage.out" -type f | head -1)
+          if [ -n "$coverage_file" ]; then
+            cp "$coverage_file" coverage-output/e2e-coverage.out
+            echo "Copied $coverage_file to coverage-output/e2e-coverage.out"
+          else
+            echo "::error::No coverage.out file found"
+            exit 1
+          fi
 
       - name: Upload e2e coverage to Codecov
+        if: always()
         uses: codecov/codecov-action@v5
         with:
           use_oidc: true
           flags: e2e-tests
-          files: ${{ matrix.component }}/e2e-coverage.out
+          files: ${{ matrix.component }}/coverage-output/e2e-coverage.out
           fail_ci_if_error: false
 
   test-e2e-smoke:
     name: Smoke tests (may)
     runs-on: ubuntu-latest
-        # for OIDC authentication with Codecov
+    # for OIDC authentication with Codecov
     permissions:
       id-token: write
       contents: read
     defaults:
       run:
         working-directory: "./may"
+
+    env:
+      ENABLE_COVERAGE: "true"
 
     steps:
       - name: Clone the code
@@ -88,15 +133,46 @@ jobs:
       - name: Verify kind installation
         run: kind version
 
-      - name: Running smoke tests coverage
+      - name: Run smoke tests with coverage instrumentation
         run: |
           go mod tidy
-          make test-e2e-smoke-coverage
+          make test-e2e-smoke
+
+      - name: Collect e2e coverage from instrumented pods
+        if: always()
+        run: |
+          mkdir -p coverage-output && chmod 700 coverage-output
+          cp $HOME/.kube/config /tmp/kubeconfig && chmod 600 /tmp/kubeconfig
+          podman run --rm \
+            --network host \
+            --user $(id -u):$(id -g) \
+            -v /tmp/kubeconfig:/kubeconfig:ro \
+            -v $PWD/coverage-output:/workspace/coverage-output \
+            -e KUBECONFIG=/kubeconfig \
+            quay.io/konflux-ci/konflux-devprod/coverport-cli@sha256:9a2d0a42fcc0dcea31c1b20b2752bb4dfe76f92a99314968e24f525c782a03f1 \
+            collect \
+              --namespace=may-system \
+              --label-selector=control-plane=controller-manager \
+              --test-name=e2e-tests \
+              --output=/workspace/coverage-output
+
+      - name: Prepare coverage for upload
+        if: always()
+        run: |
+          coverage_file=$(find coverage-output -name "coverage.out" -type f | head -1)
+          if [ -n "$coverage_file" ]; then
+            cp "$coverage_file" coverage-output/e2e-coverage.out
+            echo "Copied $coverage_file to coverage-output/e2e-coverage.out"
+          else
+            echo "::error::No coverage.out file found"
+            exit 1
+          fi
 
       - name: Upload e2e smoke coverage to Codecov
+        if: always()
         uses: codecov/codecov-action@v5
         with:
           use_oidc: true
           flags: e2e-tests
-          files: may/e2e-coverage.out
+          files: may/coverage-output/e2e-coverage.out
           fail_ci_if_error: false
