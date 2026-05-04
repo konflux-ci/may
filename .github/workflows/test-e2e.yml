@@ -66,7 +66,7 @@ jobs:
         if: always()
         run: |
           mkdir -p coverage-output && chmod 700 coverage-output
-          cp $HOME/.kube/config /tmp/kubeconfig && chmod 600 /tmp/kubeconfig
+          cp $HOME/.kube/config /tmp/kubeconfig && chmod 400 /tmp/kubeconfig
           podman run --rm \
             --network host \
             --user $(id -u):$(id -g) \
@@ -142,7 +142,7 @@ jobs:
         if: always()
         run: |
           mkdir -p coverage-output && chmod 700 coverage-output
-          cp $HOME/.kube/config /tmp/kubeconfig && chmod 600 /tmp/kubeconfig
+          cp $HOME/.kube/config /tmp/kubeconfig && chmod 400 /tmp/kubeconfig
           podman run --rm \
             --network host \
             --user $(id -u):$(id -g) \
