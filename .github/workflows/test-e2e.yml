@@ -69,6 +69,7 @@ jobs:
           cp $HOME/.kube/config /tmp/kubeconfig && chmod 400 /tmp/kubeconfig
           podman run --rm \
             --network host \
+            --userns=keep-id \
             --user $(id -u):$(id -g) \
             -v /tmp/kubeconfig:/kubeconfig:ro \
             -v $PWD/coverage-output:/workspace/coverage-output \
@@ -145,6 +146,7 @@ jobs:
           cp $HOME/.kube/config /tmp/kubeconfig && chmod 400 /tmp/kubeconfig
           podman run --rm \
             --network host \
+            --userns=keep-id \
             --user $(id -u):$(id -g) \
             -v /tmp/kubeconfig:/kubeconfig:ro \
             -v $PWD/coverage-output:/workspace/coverage-output \
