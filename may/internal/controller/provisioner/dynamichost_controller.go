@@ -181,7 +181,7 @@ func (r *DynamicHostReconciler) finalize(ctx context.Context, h maykonfluxcidevv
 	l := logf.FromContext(ctx).WithValues("phase", "finalize")
 
 	l.Info("deleting the runner")
-	if err := r.ensureHostRunnerIsDeleted(ctx, &h); err != nil {
+	if deleted, err := r.ensureHostRunnerIsDeleted(ctx, &h); err != nil || !deleted {
 		return err
 	}
 
@@ -216,7 +216,7 @@ func (r *DynamicHostReconciler) ensureRunnerExists(ctx context.Context, h *mayko
 			u.Spec.Flavor = h.Spec.Flavor
 			u.Spec.Queue = h.Spec.Queue
 			u.Spec.Hooks = h.Spec.Runner.Hooks
-			if err := controllerutil.SetControllerReference(h, &u, r.Scheme, controllerutil.WithBlockOwnerDeletion(true)); err != nil {
+			if err := controllerutil.SetControllerReference(h, &u, r.Scheme); err != nil {
 				return err
 			}
 
@@ -244,7 +244,7 @@ func (r *DynamicHostReconciler) ensureRunnerExists(ctx context.Context, h *mayko
 	return nil
 }
 
-func (r *DynamicHostReconciler) ensureHostRunnerIsDeleted(ctx context.Context, h *maykonfluxcidevv1alpha1.DynamicHost) error {
+func (r *DynamicHostReconciler) ensureHostRunnerIsDeleted(ctx context.Context, h *maykonfluxcidevv1alpha1.DynamicHost) (bool, error) {
 	u := maykonfluxcidevv1alpha1.Runner{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      h.Name,
@@ -253,21 +253,21 @@ func (r *DynamicHostReconciler) ensureHostRunnerIsDeleted(ctx context.Context, h
 	}
 	if err := r.Get(ctx, client.ObjectKeyFromObject(&u), &u); err != nil {
 		if kerrors.IsNotFound(err) {
-			// make sure it was deleted on the APIServer
-			return client.IgnoreNotFound(r.Delete(ctx, &u))
+			// we are sure that the runner was deleted
+			return true, nil
 		}
-		return err
+		return false, err
 	}
 
 	// if not already marked for deletion
 	if u.DeletionTimestamp.IsZero() {
-		return r.Delete(ctx, &u)
+		return false, r.Delete(ctx, &u)
 	}
 
 	if controllerutil.RemoveFinalizer(&u, constants.HostControllerFinalizer) {
-		return r.Update(ctx, &u)
+		return false, r.Update(ctx, &u)
 	}
-	return nil
+	return false, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
