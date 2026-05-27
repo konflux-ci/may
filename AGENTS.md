@@ -1,22 +1,15 @@
-# may - AI Agent Guide
+# MAY
 
-## Project Structure
+MAY is a Kubernetes-native system for management of remote multi-architecture runners.
 
-```
-demo/                 Scripts and tools to demo MAY
-drivers/aws           Kubernetes Controller to manage Instances on AWS Cloud
-drivers/ibm           Kubernetes Controller to manage Instances on IBM Cloud
-drivers/incluster     Development only Kubernetes Controller to manage Instances in cluster
-may/                  Kubernetes Controller MAY's core logic
-```
+## Project Layout
 
-MAY's core functionalities are implemented under `may`.
-MAY is extended by decoupled controllers implemented under the `drivers` folder.
-Each Kubernetes Controller in this repo is provided with its own AGENTS.md file.
+- `demo` - Scripts and tools to demo MAY
+- `drivers/aws` - Kubernetes Controller to manage Instances on AWS Cloud
+- `drivers/ibm` - Kubernetes Controller to manage Instances on IBM Cloud
+- `drivers/incluster` - Development only Kubernetes Controller to manage Instances in cluster
+- `may/` - MAY's core Kubernetes Controller
 
-## Critical Rules
+## Gotchas
 
-Respect the Critical Rules in the per-component AGENTS.md files too.
-
-### Keep Project Structure
-Do not move files around. The CLI expects files in specific locations.
+- Kubernetes Controllers in this repo have their own AGENTS.md. Refer to them for scoped information.
