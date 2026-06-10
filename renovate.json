@@ -43,7 +43,7 @@
         "patch",
         "digest"
       ],
-      "automerge": true
+      "automerge": false
     },
     {
       "groupName": "go-modules major",
