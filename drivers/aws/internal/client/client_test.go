@@ -19,10 +19,10 @@ package client
 import (
 	"context"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	internalconfig "github.com/konflux-ci/may/drivers/aws/internal/config"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
