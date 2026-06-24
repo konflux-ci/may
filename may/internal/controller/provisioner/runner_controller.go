@@ -60,6 +60,13 @@ type RunnerReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
+// TODO(user): Modify the Reconcile function to compare the state specified by
+// the Runner object against the actual cluster state, and then
+// perform operations to make the cluster state reflect the state specified by
+// the user.
+//
+// For more details, check Reconcile and its Result here:
+// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.4/pkg/reconcile
 func (r *RunnerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := ctrl.LoggerFrom(ctx).WithValues("runner", req)
 
@@ -217,7 +224,7 @@ func (r *RunnerReconciler) runNextHookPod(
 	u maykonfluxcidevv1alpha1.Runner,
 	h maykonfluxcidevv1alpha1.RunnerHookPodTemplateSpec,
 	phaseLabel, prefix string,
-) (*corev1.Pod, error) {
+) error {
 	ll := map[string]string{
 		constants.RunnerNameLabel:      u.Name,
 		constants.RunnerHookNameLabel:  h.Name,
@@ -236,10 +243,9 @@ func (r *RunnerReconciler) runNextHookPod(
 		Spec: h.Template.Spec,
 	}
 	if err := controllerutil.SetControllerReference(&u, &p, r.Scheme); err != nil {
-		return nil, err
+		return err
 	}
-	err := client.IgnoreAlreadyExists(r.Create(ctx, &p))
-	return &p, err
+	return client.IgnoreAlreadyExists(r.Create(ctx, &p))
 }
 
 func (r *RunnerReconciler) ensureClusterQueue(ctx context.Context, u maykonfluxcidevv1alpha1.Runner, m func(*kueuev1beta1.ClusterQueue)) error {
