@@ -2,6 +2,8 @@
 
 MAY AWS Driver manages AWS Instances for MAY.
 
+The driver intended to perform all kind of operations with EC2 instances in Amazon cloud. It should support two modes or operations - static (long-running instances) and dynamic (one-time instances). This includes, but not limited to - on demand EC2 instances creation, accessability verification, and disposal.
+
 ## Commands
 
 | Action | Command |
@@ -14,8 +16,10 @@ MAY AWS Driver manages AWS Instances for MAY.
 
 ## Project Layout
 
-- `internal/controller/` — controllers
 - `config/` — manifests
+- `internal/controller/` — controllers
+- `internal/config/` — internal configuration structs and parsers
+- `internal/client/` — AWS credantials composers and client constructors
 
 ## Key Conventions
 
