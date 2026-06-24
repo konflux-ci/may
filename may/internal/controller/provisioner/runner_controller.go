@@ -217,7 +217,7 @@ func (r *RunnerReconciler) runNextHookPod(
 	u maykonfluxcidevv1alpha1.Runner,
 	h maykonfluxcidevv1alpha1.RunnerHookPodTemplateSpec,
 	phaseLabel, prefix string,
-) error {
+) (*corev1.Pod, error) {
 	ll := map[string]string{
 		constants.RunnerNameLabel:      u.Name,
 		constants.RunnerHookNameLabel:  h.Name,
@@ -236,9 +236,10 @@ func (r *RunnerReconciler) runNextHookPod(
 		Spec: h.Template.Spec,
 	}
 	if err := controllerutil.SetControllerReference(&u, &p, r.Scheme); err != nil {
-		return err
+		return nil, err
 	}
-	return client.IgnoreAlreadyExists(r.Create(ctx, &p))
+	err := client.IgnoreAlreadyExists(r.Create(ctx, &p))
+	return &p, err
 }
 
 func (r *RunnerReconciler) ensureClusterQueue(ctx context.Context, u maykonfluxcidevv1alpha1.Runner, m func(*kueuev1beta1.ClusterQueue)) error {

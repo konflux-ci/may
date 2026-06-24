@@ -160,3 +160,13 @@ func FindHookStatus(
 	}
 	return nil
 }
+
+func AddHookStatus(
+	hooksStatus []maykonfluxcidevv1alpha1.RunnerHookStatus,
+	hookStatus maykonfluxcidevv1alpha1.RunnerHookStatus,
+) []maykonfluxcidevv1alpha1.RunnerHookStatus {
+	ss := slices.DeleteFunc(hooksStatus, func(h maykonfluxcidevv1alpha1.RunnerHookStatus) bool {
+		return h.Hook == hookStatus.Hook
+	})
+	return append(ss, hookStatus)
+}

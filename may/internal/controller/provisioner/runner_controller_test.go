@@ -146,7 +146,36 @@ var _ = Describe("Runner Controller", Ordered, Serial, func() {
 			Expect(k8sClient.Get(ctx, pk, &p)).To(Succeed())
 			Expect(p.Spec).ToNot(Equal(r.Spec.Hooks.Provisioning[0].Template))
 			Expect(controllerutil.HasControllerReference(&p)).To(BeTrue())
+			Expect(r.Status.HooksStatus.Provisioning).NotTo(BeEmpty())
 		})
 
+		It("waits for the provisioning pod to complete", func(ctx context.Context) {
+			By("Reconciling the created resource")
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			r := maykonfluxcidevv1alpha1.Runner{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+			Expect(r.Finalizers).To(Equal([]string{RunnerControllerFinalizer}))
+			Expect(r.Status).ToNot(BeNil())
+			Expect(r.Status.HooksStatus).ToNot(BeNil())
+			Expect(r.Status.HooksStatus.Provisioning).To(HaveLen(1))
+
+			for _, h := range r.Status.HooksStatus.Provisioning {
+				p := corev1.Pod{}
+				pk := types.NamespacedName{
+					Name:      h.Pod,
+					Namespace: r.Namespace,
+				}
+				Expect(k8sClient.Get(ctx, pk, &p)).To(Succeed())
+
+				Expect(h.Phase).To(Equal(p.Status.Phase))
+				Expect(h.PodMessage).To(Equal(p.Status.Message))
+				Expect(h.DeletionTimestamp).To(Equal(p.DeletionTimestamp))
+				Expect(h.Pod).To(Equal(p.Name))
+			}
+		})
 	})
 })
