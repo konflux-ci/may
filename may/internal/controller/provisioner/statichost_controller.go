@@ -127,7 +127,7 @@ func (r *StaticHostReconciler) ensureHostIsReady(ctx context.Context, h maykonfl
 	// ensure the appropriate number of runners exists
 	errs := []error{
 		r.ensureHostRunnersExists(ctx, &h),
-		r.ensureHostRunnersAreDeleted(ctx, &h),
+		r.ensureExtraHostRunnersAreDeleted(ctx, &h),
 	}
 	return errors.Join(errs...)
 }
@@ -213,6 +213,9 @@ func (r *StaticHostReconciler) finalize(ctx context.Context, h maykonfluxcidevv1
 	return nil
 }
 
+// ensureHostRunnersExists creates runners as specified by the host or patches existing runners to
+// ensure they remain up-to-date with the corresponding static host.  Errors during creation are
+// collected and returned.
 func (r *StaticHostReconciler) ensureHostRunnersExists(ctx context.Context, h *maykonfluxcidevv1alpha1.StaticHost) error {
 	errs := []error{}
 	for i := range h.Spec.Runners.Instances {
@@ -222,7 +225,7 @@ func (r *StaticHostReconciler) ensureHostRunnersExists(ctx context.Context, h *m
 				Namespace: h.Namespace,
 			},
 		}
-		if _, err := controllerutil.CreateOrPatch(ctx, r.Client, &u, func() error {
+		op, err := controllerutil.CreateOrPatch(ctx, r.Client, &u, func() error {
 			if u.Labels == nil {
 				u.Labels = map[string]string{}
 			}
@@ -235,14 +238,19 @@ func (r *StaticHostReconciler) ensureHostRunnersExists(ctx context.Context, h *m
 			u.Spec.Queue = h.Spec.Queue
 			u.Spec.Hooks = h.Spec.Runners.Hooks
 			return controllerutil.SetControllerReference(h, &u, r.Scheme, controllerutil.WithBlockOwnerDeletion(true))
-		}); err != nil {
+		})
+		if err != nil {
 			errs = append(errs, err)
+		} else if op == controllerutil.OperationResultCreated {
+			runnersCreated.Inc()
 		}
 	}
 	return errors.Join(errs...)
 }
 
-func (r *StaticHostReconciler) ensureHostRunnersAreDeleted(ctx context.Context, h *maykonfluxcidevv1alpha1.StaticHost) error {
+// ensureExtraHostRunnersAreDeleted checks if we have more runners than the number of instances in
+// the spec.runners.instances field.  If we do, delete the extra runners.
+func (r *StaticHostReconciler) ensureExtraHostRunnersAreDeleted(ctx context.Context, h *maykonfluxcidevv1alpha1.StaticHost) error {
 	ll := func() []string {
 		if h.Status.State != nil && *h.Status.State == maykonfluxcidevv1alpha1.HostActualStateReady {
 			ll := make([]string, h.Spec.Runners.Instances)
