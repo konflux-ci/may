@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package provisioner
+package runner
 
 import (
 	"context"
@@ -34,13 +34,28 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
+	"github.com/konflux-ci/may/internal/controller/provisioner/constants"
 	"github.com/konflux-ci/may/pkg/runner"
 )
 
-var image = "registry.access.redhat.com/ubi10/ubi-micro@sha256:f86852f349dcd2b9ebccef4c8a46fdb75ff2fef9fde8581cef1feddb706be7ba"
+var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
+	Context("Reconciles a non existing Runner", func() {
+		It("doesn't propagate the error", func(ctx context.Context) {
+			controllerReconciler := &RunnerReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      "non-existing-runner",
+					Namespace: "default",
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
 
-var _ = Describe("Runner Controller", Ordered, Serial, func() {
-	Context("When reconciling a resource", func() {
+	Context("Initializes a Runner", func() {
 		const (
 			runnerName = "test-resource"
 			namespace  = "default"
@@ -61,7 +76,7 @@ var _ = Describe("Runner Controller", Ordered, Serial, func() {
 			}
 
 			By("creating a Runner")
-			runner := &maykonfluxcidevv1alpha1.Runner{
+			r := &maykonfluxcidevv1alpha1.Runner{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      runnerName,
 					Namespace: namespace,
@@ -115,32 +130,20 @@ var _ = Describe("Runner Controller", Ordered, Serial, func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, runner)).To(Succeed())
+			Expect(k8sClient.Create(ctx, r)).To(Succeed())
 		})
 
 		AfterAll(func(ctx context.Context) {
-			// TODO(user): Cleanup logic after each test, like removing the runner instance.
-			runner := &maykonfluxcidevv1alpha1.Runner{}
-			err := k8sClient.Get(ctx, typeNamespacedName, runner)
+			// TODO(user): Cleanup logic after each test, like removing the r instance.
+			r := &maykonfluxcidevv1alpha1.Runner{}
+			err := k8sClient.Get(ctx, typeNamespacedName, r)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Cleanup the specific resource instance Runner")
-			Expect(k8sClient.Delete(ctx, runner)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, r)).To(Succeed())
 		})
 
-		Describe("Runner doesn't exist", func() {
-			It("doesn't propagate the error", func(ctx context.Context) {
-				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Name:      "non-existing-runner",
-						Namespace: "default",
-					},
-				})
-				Expect(err).NotTo(HaveOccurred())
-			})
-		})
-
-		Describe("Initialization", func() {
+		Describe("Initialization", Serial, Ordered, func() {
 			It("initializes the runner", func(ctx context.Context) {
 				By("Reconciling the created resource")
 				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -150,13 +153,13 @@ var _ = Describe("Runner Controller", Ordered, Serial, func() {
 
 				r := maykonfluxcidevv1alpha1.Runner{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
-				Expect(r.Finalizers).To(Equal([]string{RunnerControllerFinalizer}))
+				Expect(r.Finalizers).To(Equal([]string{constants.RunnerControllerFinalizer}))
 				Expect(r.Status).ToNot(BeNil())
 				Expect(runner.IsInitializing(r)).To(BeTrue())
 			})
 
 			It("creates the first provisioning pod", func(ctx context.Context) {
-				By("Reconciling the runner ")
+				By("Reconciling the runner")
 				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: typeNamespacedName,
 				})
@@ -253,15 +256,10 @@ var _ = Describe("Runner Controller", Ordered, Serial, func() {
 				})
 				Expect(err).NotTo(HaveOccurred())
 
-				By("Checking the second provisioning pod is created")
+				By("Checking the Runner is Ready")
 				Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
 				Expect(runner.IsReady(r)).To(BeTrue())
 			})
 		})
-
-		Describe("Cleanup", func() {
-			It("runs cleanup", func(ctx context.Context) {})
-		})
-
 	})
 })
