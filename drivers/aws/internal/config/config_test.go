@@ -38,6 +38,17 @@ var _ = Describe("parseInt32", func() {
 	)
 })
 
+var _ = Describe("parseOptionalInt32", func() {
+	DescribeTable("optional integer annotation parsing",
+		func(input string, expected *int32) {
+			Expect(parseOptionalInt32(input)).Should(Equal(expected))
+		},
+		Entry("an empty string", "", nil),
+		Entry("a valid integer", "125", int32Ptr(125)),
+		Entry("a non-numeric value", "not-a-number", nil),
+	)
+})
+
 var _ = Describe("parseBool", func() {
 	DescribeTable("boolean annotation parsing",
 		func(input string, expected bool) {
@@ -78,7 +89,6 @@ var _ = Describe("configurationFromAnnotations", func() {
 				AnnotationInstanceType:            "m6a.4xlarge",
 				AnnotationKeyName:                 "my-key",
 				AnnotationSecret:                  "aws-account",
-				AnnotationSystemNamespace:         "may-system",
 				AnnotationSecurityGroup:           "launch-wizard-1",
 				AnnotationSecurityGroupId:         "sg-0123456789abcdef0",
 				AnnotationSubnetId:                "subnet-0123456789abcdef0",
@@ -101,7 +111,6 @@ var _ = Describe("configurationFromAnnotations", func() {
 				InstanceType:            "m6a.4xlarge",
 				KeyName:                 "my-key",
 				Secret:                  "aws-account",
-				SystemNamespace:         "may-system",
 				SecurityGroup:           "launch-wizard-1",
 				SecurityGroupId:         "sg-0123456789abcdef0",
 				SubnetId:                "subnet-0123456789abcdef0",
@@ -134,16 +143,28 @@ var _ = Describe("configurationFromAnnotations", func() {
 	})
 
 	When("optional pointer annotations are present but empty", func() {
-		It("should set pointer fields to zero values", func() {
+		It("should leave numeric pointer fields nil", func() {
 			cfg := configurationFromAnnotations(map[string]string{
 				AnnotationThroughput: "",
 				AnnotationIops:       "",
 				AnnotationUserData:   "",
 			})
 
-			Expect(cfg.Throughput).Should(Equal(int32Ptr(0)))
-			Expect(cfg.Iops).Should(Equal(int32Ptr(0)))
+			Expect(cfg.Throughput).Should(BeNil())
+			Expect(cfg.Iops).Should(BeNil())
 			Expect(cfg.UserData).Should(Equal(strPtr("")))
+		})
+	})
+
+	When("throughput or iops annotations are invalid", func() {
+		It("should leave the pointer fields nil", func() {
+			cfg := configurationFromAnnotations(map[string]string{
+				AnnotationThroughput: "not-a-number",
+				AnnotationIops:       "also-invalid",
+			})
+
+			Expect(cfg.Throughput).Should(BeNil())
+			Expect(cfg.Iops).Should(BeNil())
 		})
 	})
 
@@ -174,7 +195,8 @@ var _ = Describe("GetStaticAWSConfiguration", func() {
 		It("should build configuration from host metadata", func() {
 			host := &maykonfluxcidevv1alpha1.StaticHost{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "aws-host-arm64",
+					Name:      "aws-host-arm64",
+					Namespace: "may-system",
 					Annotations: map[string]string{
 						AnnotationRegion:       "us-west-2",
 						AnnotationAmi:          "ami-static",
@@ -187,11 +209,32 @@ var _ = Describe("GetStaticAWSConfiguration", func() {
 			cfg := GetStaticAWSConfiguration(context.Background(), host, nil)
 
 			Expect(cfg).Should(Equal(AWSConfiguration{
-				Region:       "us-west-2",
-				Ami:          "ami-static",
-				InstanceType: "t4g.medium",
-				Secret:       "aws-secret",
+				Region:          "us-west-2",
+				Ami:             "ami-static",
+				InstanceType:    "t4g.medium",
+				Secret:          "aws-secret",
+				SystemNamespace: "may-system",
 			}))
+		})
+	})
+
+	When("a system-namespace annotation conflicts with the host namespace", func() {
+		It("should use the host namespace for credential lookup", func() {
+			host := &maykonfluxcidevv1alpha1.StaticHost{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "aws-host-arm64",
+					Namespace: "may-system",
+					Annotations: map[string]string{
+						AnnotationRegion:          "us-west-2",
+						AnnotationSecret:          "aws-secret",
+						AnnotationSystemNamespace: "other-namespace",
+					},
+				},
+			}
+
+			cfg := GetStaticAWSConfiguration(context.Background(), host, nil)
+
+			Expect(cfg.SystemNamespace).Should(Equal("may-system"))
 		})
 	})
 })
@@ -201,13 +244,13 @@ var _ = Describe("GetDynamicAWSConfiguration", func() {
 		It("should build configuration from host metadata", func() {
 			host := &maykonfluxcidevv1alpha1.DynamicHost{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "aws-host-amd64",
+					Name:      "aws-host-amd64",
+					Namespace: "may-system",
 					Annotations: map[string]string{
-						AnnotationRegion:          "us-east-1",
-						AnnotationAmi:             "ami-dynamic",
-						AnnotationInstanceType:    "m6a.4xlarge",
-						AnnotationSecret:          "aws-account",
-						AnnotationSystemNamespace: "may-system",
+						AnnotationRegion:       "us-east-1",
+						AnnotationAmi:          "ami-dynamic",
+						AnnotationInstanceType: "m6a.4xlarge",
+						AnnotationSecret:       "aws-account",
 					},
 				},
 			}

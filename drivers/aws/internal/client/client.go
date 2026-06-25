@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
@@ -58,7 +59,7 @@ func newEC2Client(ctx context.Context, kubeClient client.Client, cfg internalcon
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
 		awsconfig.WithRegion(cfg.Region),
-		awsconfig.WithCredentialsProvider(provider),
+		awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(provider)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
@@ -76,7 +77,7 @@ func validateAWSConfiguration(cfg internalconfig.AWSConfiguration) error {
 		errs = append(errs, fmt.Errorf("missing required annotation %q", internalconfig.AnnotationSecret))
 	}
 	if cfg.SystemNamespace == "" {
-		errs = append(errs, fmt.Errorf("missing required annotation %q", internalconfig.AnnotationSystemNamespace))
+		errs = append(errs, fmt.Errorf("missing host namespace for AWS credentials secret lookup"))
 	}
 	return errors.Join(errs...)
 }

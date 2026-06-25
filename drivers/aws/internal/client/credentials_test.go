@@ -19,7 +19,6 @@ package client
 import (
 	"context"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -91,23 +90,23 @@ var _ = Describe("kubeSecretCredentialsProvider", func() {
 			creds, err := provider.Retrieve(ctx)
 
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(creds).Should(Equal(aws.Credentials{
-				AccessKeyID:     "AKIAEXAMPLE",
-				SecretAccessKey: "secret",
-				SessionToken:    "token",
-				Source:          "KubernetesSecret",
-			}))
+			Expect(creds.AccessKeyID).Should(Equal("AKIAEXAMPLE"))
+			Expect(creds.SecretAccessKey).Should(Equal("secret"))
+			Expect(creds.SessionToken).Should(Equal("token"))
+			Expect(creds.Source).Should(Equal("KubernetesSecret"))
+			Expect(creds.CanExpire).Should(BeTrue())
+			Expect(creds.Expires).ShouldNot(BeZero())
 		})
 	})
 
 	When("the secret uses legacy key names", func() {
 		BeforeEach(func() {
 			provider = &kubeSecretCredentialsProvider{
-				kubeClient: newTestKubeClient(awsCredentialsSecret(secretName, namespace, map[string][]byte{
+				kubeClient: newTestKubeClient(awsCredentialsSecret("legacy-secret", namespace, map[string][]byte{
 					legacySecretKeyAccessKeyID:     []byte("AKIALEGACY"),
-					legacySecretKeySecretAccessKey: []byte("legacy-secret"),
+					legacySecretKeySecretAccessKey: []byte("legacy-secret-value"),
 				})),
-				secretName:      secretName,
+				secretName:      "legacy-secret",
 				secretNamespace: namespace,
 			}
 		})
@@ -116,11 +115,9 @@ var _ = Describe("kubeSecretCredentialsProvider", func() {
 			creds, err := provider.Retrieve(ctx)
 
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(creds).Should(Equal(aws.Credentials{
-				AccessKeyID:     "AKIALEGACY",
-				SecretAccessKey: "legacy-secret",
-				Source:          "KubernetesSecret",
-			}))
+			Expect(creds.AccessKeyID).Should(Equal("AKIALEGACY"))
+			Expect(creds.SecretAccessKey).Should(Equal("legacy-secret-value"))
+			Expect(creds.Source).Should(Equal("KubernetesSecret"))
 		})
 	})
 
@@ -128,7 +125,7 @@ var _ = Describe("kubeSecretCredentialsProvider", func() {
 		BeforeEach(func() {
 			provider = &kubeSecretCredentialsProvider{
 				kubeClient:      newTestKubeClient(),
-				secretName:      secretName,
+				secretName:      "missing-secret",
 				secretNamespace: namespace,
 			}
 		})
@@ -144,10 +141,10 @@ var _ = Describe("kubeSecretCredentialsProvider", func() {
 	When("the secret is missing required keys", func() {
 		BeforeEach(func() {
 			provider = &kubeSecretCredentialsProvider{
-				kubeClient: newTestKubeClient(awsCredentialsSecret(secretName, namespace, map[string][]byte{
+				kubeClient: newTestKubeClient(awsCredentialsSecret("incomplete-secret", namespace, map[string][]byte{
 					secretKeyAccessKeyID: []byte("AKIAEXAMPLE"),
 				})),
-				secretName:      secretName,
+				secretName:      "incomplete-secret",
 				secretNamespace: namespace,
 			}
 		})

@@ -32,6 +32,7 @@ type StaticHostReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 // +kubebuilder:rbac:groups=may.konflux-ci.dev.konflux-ci.dev,resources=statichosts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=may.konflux-ci.dev.konflux-ci.dev,resources=statichosts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=may.konflux-ci.dev.konflux-ci.dev,resources=statichosts/finalizers,verbs=update

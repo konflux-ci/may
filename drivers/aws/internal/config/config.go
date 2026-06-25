@@ -22,7 +22,7 @@ import (
 
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
@@ -70,12 +70,12 @@ type AWSConfiguration struct {
 	// KeyName is the name of the SSH key inside of AWS.
 	KeyName string
 
-	// Secret is the name of the Kubernetes ExternalSecret resource that contains
-	// the SSH key's access key ID and secret access key.
+	// Secret is the name of the Kubernetes Secret that contains the AWS access
+	// key ID and secret access key.
 	Secret string
 
-	// SystemNamespace is the name of the Kubernetes namespace where the specified
-	// secrets are stored.
+	// SystemNamespace is the Kubernetes namespace of the host resource. AWS
+	// credentials are read from a Secret in this namespace.
 	SystemNamespace string
 
 	// SecurityGroup is the name of the security group to be used on the instance.
@@ -110,6 +110,8 @@ type AWSConfiguration struct {
 	// for the instance's EBS volume(s).
 	Iops *int32
 
+	// UserData is the base64-encoded cloud-init or shell script passed to the
+	// instance at launch.
 	UserData *string
 
 	// Tenancy specifies the tenancy of the instance. Valid values are "default",
@@ -132,10 +134,11 @@ type AWSConfiguration struct {
 // GetStaticAWSConfiguration returns the AWS configuration for a StaticHost,
 // sourced from the host's annotations.
 func GetStaticAWSConfiguration(ctx context.Context, staticHost *maykonfluxcidevv1alpha1.StaticHost, _ client.Client) AWSConfiguration {
-	l := log.FromContext(ctx).WithValues("StaticHost", staticHost.Name)
+	l := logf.FromContext(ctx).WithValues("StaticHost", staticHost.Name)
 	l.V(1).Info("building AWS configuration from StaticHost annotations")
 
 	cfg := configurationFromAnnotations(staticHost.GetAnnotations())
+	cfg.SystemNamespace = staticHost.Namespace
 
 	l.V(1).Info("AWS configuration resolved",
 		"region", cfg.Region,
@@ -148,10 +151,11 @@ func GetStaticAWSConfiguration(ctx context.Context, staticHost *maykonfluxcidevv
 // GetDynamicAWSConfiguration returns the AWS configuration for a DynamicHost,
 // sourced from the host's annotations.
 func GetDynamicAWSConfiguration(ctx context.Context, dynamicHost *maykonfluxcidevv1alpha1.DynamicHost, _ client.Client) AWSConfiguration {
-	l := log.FromContext(ctx).WithValues("DynamicHost", dynamicHost.Name)
+	l := logf.FromContext(ctx).WithValues("DynamicHost", dynamicHost.Name)
 	l.V(1).Info("building AWS configuration from DynamicHost annotations")
 
 	cfg := configurationFromAnnotations(dynamicHost.GetAnnotations())
+	cfg.SystemNamespace = dynamicHost.Namespace
 
 	l.V(1).Info("AWS configuration resolved",
 		"region", cfg.Region,
@@ -171,7 +175,6 @@ func configurationFromAnnotations(annotations map[string]string) AWSConfiguratio
 		InstanceType:            annotations[AnnotationInstanceType],
 		KeyName:                 annotations[AnnotationKeyName],
 		Secret:                  annotations[AnnotationSecret],
-		SystemNamespace:         annotations[AnnotationSystemNamespace],
 		SecurityGroup:           annotations[AnnotationSecurityGroup],
 		SecurityGroupId:         annotations[AnnotationSecurityGroupId],
 		SubnetId:                annotations[AnnotationSubnetId],
@@ -186,13 +189,11 @@ func configurationFromAnnotations(annotations map[string]string) AWSConfiguratio
 	}
 
 	if v, ok := annotations[AnnotationThroughput]; ok {
-		parsed := parseInt32(v)
-		cfg.Throughput = &parsed
+		cfg.Throughput = parseOptionalInt32(v)
 	}
 
 	if v, ok := annotations[AnnotationIops]; ok {
-		parsed := parseInt32(v)
-		cfg.Iops = &parsed
+		cfg.Iops = parseOptionalInt32(v)
 	}
 
 	if v, ok := annotations[AnnotationUserData]; ok {
@@ -215,9 +216,29 @@ func parseInt32(s string) int32 {
 	return int32(v)
 }
 
+// parseOptionalInt32 parses an optional int32 annotation. Empty strings return
+// nil. Invalid values are ignored so callers can distinguish them from zero.
+func parseOptionalInt32(s string) *int32 {
+	if s == "" {
+		return nil
+	}
+	v, err := strconv.ParseInt(s, 10, 32)
+	if err != nil {
+		return nil
+	}
+	parsed := int32(v)
+	return &parsed
+}
+
 // parseBool parses a string as a boolean. Returns false if the string is empty
 // or cannot be parsed.
 func parseBool(s string) bool {
-	v, _ := strconv.ParseBool(s)
+	if s == "" {
+		return false
+	}
+	v, err := strconv.ParseBool(s)
+	if err != nil {
+		return false
+	}
 	return v
 }

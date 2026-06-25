@@ -19,11 +19,14 @@ package client
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+const credentialsTTL = 15 * time.Minute
 
 // kubeSecretCredentialsProvider implements aws.CredentialsProvider by reading
 // AWS credentials from a Kubernetes Secret whenever the SDK requests them.
@@ -52,25 +55,26 @@ func (p *kubeSecretCredentialsProvider) Retrieve(ctx context.Context) (aws.Crede
 		Namespace: p.secretNamespace,
 		Name:      p.secretName,
 	}, secret); err != nil {
-		return aws.Credentials{}, fmt.Errorf("failed to get AWS credentials secret %s/%s: %w",
-			p.secretNamespace, p.secretName, err)
+		return aws.Credentials{}, fmt.Errorf("failed to get AWS credentials secret: %w", err)
 	}
 
 	accessKeyID := secretData(secret.Data, secretKeyAccessKeyID, legacySecretKeyAccessKeyID)
 	secretAccessKey := secretData(secret.Data, secretKeySecretAccessKey, legacySecretKeySecretAccessKey)
 	if accessKeyID == "" || secretAccessKey == "" {
 		return aws.Credentials{}, fmt.Errorf(
-			"secret %s/%s is missing required keys (%q and/or %q, or legacy %q and/or %q)",
-			p.secretNamespace, p.secretName,
+			"AWS credentials secret is missing required keys (%q and/or %q, or legacy %q and/or %q)",
 			secretKeyAccessKeyID, secretKeySecretAccessKey,
 			legacySecretKeyAccessKeyID, legacySecretKeySecretAccessKey)
 	}
 
+	now := time.Now()
 	return aws.Credentials{
 		AccessKeyID:     accessKeyID,
 		SecretAccessKey: secretAccessKey,
 		SessionToken:    secretData(secret.Data, secretKeySessionToken, legacySecretKeySessionToken),
 		Source:          "KubernetesSecret",
+		CanExpire:       true,
+		Expires:         now.Add(credentialsTTL),
 	}, nil
 }
 
