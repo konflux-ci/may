@@ -75,7 +75,9 @@ func (r *StaticHostReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 	// add finalizer
 	if controllerutil.AddFinalizer(&h, constants.HostControllerFinalizer) {
-		return ctrl.Result{}, r.Update(ctx, &h)
+		if err := r.Update(ctx, &h); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	// retrieve statichosts' runners
