@@ -1,5 +1,5 @@
 /*
-Copyright 2025.
+Copyright 2026.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,72 +21,168 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	mayv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
+	"github.com/konflux-ci/may/pkg/claim"
+	"github.com/konflux-ci/may/pkg/scheduler"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-var _ = Describe("Claim Controller", func() {
-	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+var _ = Describe("ClaimReconciler", func() {
+	const (
+		claimName = "test-claim"
+		podName   = "test-pod"
+	)
 
-		ctx := context.Background()
+	var (
+		reconciler *ClaimReconciler
+		ns         *corev1.Namespace
+	)
 
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+	BeforeEach(func(ctx context.Context) {
+		ns = &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "scheduler-test-",
+			},
 		}
-		hostclaim := &maykonfluxcidevv1alpha1.Claim{}
+		Expect(k8sClient.Create(ctx, ns)).Should(Succeed())
 
-		BeforeEach(func() {
-			By("creating the custom resource for the Kind Claim")
-			err := k8sClient.Get(ctx, typeNamespacedName, hostclaim)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &maykonfluxcidevv1alpha1.Claim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: maykonfluxcidevv1alpha1.ClaimSpec{
-						Flavor: "my-flavor",
-						For: maykonfluxcidevv1alpha1.ForReference{
-							Name:       "claimer",
-							Kind:       "Pod",
-							APIVersion: "v1",
-						},
-					},
-					// TODO(user): Specify other spec details if needed.
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-			}
-		})
+		reconciler = &ClaimReconciler{
+			Client:    k8sClient,
+			Scheduler: scheduler.New(k8sClient, scheme.Scheme, ns.Name),
+			Scheme:    scheme.Scheme,
+			Namespace: ns.Name,
+		}
+	})
 
-		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &maykonfluxcidevv1alpha1.Claim{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
+	AfterEach(func(ctx context.Context) {
+		Expect(k8sClient.Delete(ctx, ns)).Should(Succeed())
+	})
 
-			By("Cleanup the specific resource instance Claim")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &ClaimReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
+	createPod := func(ctx context.Context, phase corev1.PodPhase) *corev1.Pod {
+		p := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName,
+				Namespace: ns.Name,
+			},
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{Name: "build", Image: "registry.example.com/builder:latest"},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, p)).Should(Succeed())
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
+		if phase != "" {
+			p.Status.Phase = phase
+			Expect(k8sClient.Status().Update(ctx, p)).Should(Succeed())
+		}
+		return p
+	}
+
+	createClaimedClaim := func(ctx context.Context, p *corev1.Pod) *mayv1alpha1.Claim {
+		c := &mayv1alpha1.Claim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      claimName,
+				Namespace: ns.Name,
+			},
+			Spec: mayv1alpha1.ClaimSpec{
+				Flavor: "amd64",
+				For: mayv1alpha1.ForReference{
+					Name:       p.Name,
+					Kind:       "Pod",
+					APIVersion: "v1",
+					UID:        p.UID,
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, c)).Should(Succeed())
+
+		By("reconciling until finalizer and owner ref are set")
+		// Reconcile 1: adds finalizer (returns early)
+		// Reconcile 2: sets owner reference (returns early)
+		// Reconcile 3: initializes status conditions
+		for i := 0; i < 3; i++ {
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: client.ObjectKeyFromObject(c),
 			})
-			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+			Expect(err).ShouldNot(HaveOccurred())
+		}
+
+		By("setting Claim status to Claimed")
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
+		claim.SetClaimed(c)
+		Expect(k8sClient.Status().Update(ctx, c)).Should(Succeed())
+
+		return c
+	}
+
+	reconcileClaim := func(ctx context.Context, c *mayv1alpha1.Claim) (reconcile.Result, error) {
+		return reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: client.ObjectKeyFromObject(c),
+		})
+	}
+
+	When("claim is Claimed and pod is Succeeded", func() {
+		It("should delete the Claim", func(ctx context.Context) {
+			By("creating a Succeeded pod and a Claimed claim")
+			p := createPod(ctx, corev1.PodSucceeded)
+			c := createClaimedClaim(ctx, p)
+
+			By("reconciling the Claim")
+			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
+
+			By("verifying the Claim has a deletion timestamp")
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
+			Expect(c.DeletionTimestamp.IsZero()).Should(BeFalse())
+		})
+	})
+
+	When("claim is Claimed and pod is Failed", func() {
+		It("should delete the Claim", func(ctx context.Context) {
+			By("creating a Failed pod and a Claimed claim")
+			p := createPod(ctx, corev1.PodFailed)
+			c := createClaimedClaim(ctx, p)
+
+			By("reconciling the Claim")
+			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
+
+			By("verifying the Claim has a deletion timestamp")
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
+			Expect(c.DeletionTimestamp.IsZero()).Should(BeFalse())
+		})
+	})
+
+	When("claim is Claimed and pod is Running", func() {
+		It("should not delete the Claim", func(ctx context.Context) {
+			By("creating a Running pod and a Claimed claim")
+			p := createPod(ctx, corev1.PodRunning)
+			c := createClaimedClaim(ctx, p)
+
+			By("reconciling the Claim")
+			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
+
+			By("verifying the Claim still exists")
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(c), &mayv1alpha1.Claim{})).Should(Succeed())
+		})
+	})
+
+	When("claim is Claimed and pod does not exist", func() {
+		It("should not delete the Claim", func(ctx context.Context) {
+			By("creating a pod, creating a Claimed claim, then deleting the pod")
+			p := createPod(ctx, "")
+			c := createClaimedClaim(ctx, p)
+			Expect(k8sClient.Delete(ctx, p)).Should(Succeed())
+
+			By("reconciling the Claim")
+			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
+
+			By("verifying the Claim still exists")
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(c), &mayv1alpha1.Claim{})).Should(Succeed())
 		})
 	})
 })

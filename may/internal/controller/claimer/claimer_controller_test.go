@@ -196,6 +196,28 @@ var _ = Describe("ClaimerController", func() {
 		})
 	})
 
+	When("a Claim is created for a pod", func() {
+		It("should set a controller owner reference with blockOwnerDeletion", func(ctx context.Context) {
+			By("creating a pod and reconciling to create the Claim")
+			p := createPod(ctx, tenantNs.Name,
+				map[string]string{pod.KueueFlavorLabelPrefix + flavor: ""},
+				nil,
+			)
+			Expect(reconcilePod(ctx, p)).Error().ShouldNot(HaveOccurred())
+
+			By("verifying the Claim has a controller owner reference with blockOwnerDeletion")
+			claim := &v1alpha1.Claim{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(p), claim)).Should(Succeed())
+			Expect(claim.OwnerReferences).Should(HaveLen(1))
+			Expect(claim.OwnerReferences[0].Name).Should(Equal(p.Name))
+			Expect(claim.OwnerReferences[0].UID).Should(Equal(p.UID))
+			Expect(claim.OwnerReferences[0].Controller).ShouldNot(BeNil())
+			Expect(*claim.OwnerReferences[0].Controller).Should(BeTrue())
+			Expect(claim.OwnerReferences[0].BlockOwnerDeletion).ShouldNot(BeNil())
+			Expect(*claim.OwnerReferences[0].BlockOwnerDeletion).Should(BeTrue())
+		})
+	})
+
 	// Serialize metric tests to keep counters consistent
 	Context("Metrics tests", Serial, func() {
 		It("should increment may_claim_created when a Claim is created", func(ctx context.Context) {
