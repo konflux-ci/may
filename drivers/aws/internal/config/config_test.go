@@ -188,6 +188,16 @@ var _ = Describe("configurationFromAnnotations", func() {
 			Expect(cfg).Should(Equal(AWSConfiguration{Region: "ap-southeast-2"}))
 		})
 	})
+
+	When("a deprecated system-namespace annotation is present", func() {
+		It("should not populate SystemNamespace from annotations", func() {
+			cfg := configurationFromAnnotations(map[string]string{
+				deprecatedSystemNamespaceAnnotation: "other-namespace",
+			})
+
+			Expect(cfg.SystemNamespace).Should(BeEmpty())
+		})
+	})
 })
 
 var _ = Describe("GetStaticAWSConfiguration", func() {
@@ -225,9 +235,9 @@ var _ = Describe("GetStaticAWSConfiguration", func() {
 					Name:      "aws-host-arm64",
 					Namespace: "may-system",
 					Annotations: map[string]string{
-						AnnotationRegion:          "us-west-2",
-						AnnotationSecret:          "aws-secret",
-						AnnotationSystemNamespace: "other-namespace",
+						AnnotationRegion:                    "us-west-2",
+						AnnotationSecret:                    "aws-secret",
+						deprecatedSystemNamespaceAnnotation: "other-namespace",
 					},
 				},
 			}
@@ -266,7 +276,31 @@ var _ = Describe("GetDynamicAWSConfiguration", func() {
 			}))
 		})
 	})
+
+	When("a system-namespace annotation conflicts with the host namespace", func() {
+		It("should use the host namespace for credential lookup", func() {
+			host := &maykonfluxcidevv1alpha1.DynamicHost{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "aws-host-amd64",
+					Namespace: "may-system",
+					Annotations: map[string]string{
+						AnnotationRegion:                    "us-east-1",
+						AnnotationSecret:                    "aws-account",
+						deprecatedSystemNamespaceAnnotation: "other-namespace",
+					},
+				},
+			}
+
+			cfg := GetDynamicAWSConfiguration(context.Background(), host, nil)
+
+			Expect(cfg.SystemNamespace).Should(Equal("may-system"))
+		})
+	})
 })
+
+// deprecatedSystemNamespaceAnnotation was never honored; kept in tests to ensure
+// a user-supplied namespace cannot steer credential Secret lookups.
+const deprecatedSystemNamespaceAnnotation = "aws.may.konflux-ci.dev/system-namespace"
 
 func int32Ptr(v int32) *int32 {
 	return &v

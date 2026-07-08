@@ -34,7 +34,6 @@ const (
 	AnnotationInstanceType            = annotationPrefix + "instance-type"
 	AnnotationKeyName                 = annotationPrefix + "key-name"
 	AnnotationSecret                  = annotationPrefix + "secret"
-	AnnotationSystemNamespace         = annotationPrefix + "system-namespace"
 	AnnotationSecurityGroup           = annotationPrefix + "security-group"
 	AnnotationSecurityGroupId         = annotationPrefix + "security-group-id"
 	AnnotationSubnetId                = annotationPrefix + "subnet-id"
@@ -74,8 +73,8 @@ type AWSConfiguration struct {
 	// key ID and secret access key.
 	Secret string
 
-	// SystemNamespace is the Kubernetes namespace of the host resource. AWS
-	// credentials are read from a Secret in this namespace.
+	// SystemNamespace is always the host resource's namespace. AWS credentials
+	// are read from a Secret in this namespace; it is never taken from annotations.
 	SystemNamespace string
 
 	// SecurityGroup is the name of the security group to be used on the instance.
@@ -132,7 +131,8 @@ type AWSConfiguration struct {
 }
 
 // GetStaticAWSConfiguration returns the AWS configuration for a StaticHost,
-// sourced from the host's annotations.
+// sourced from the host's annotations. The credentials Secret namespace is
+// always the host's namespace, not an annotation.
 func GetStaticAWSConfiguration(ctx context.Context, staticHost *maykonfluxcidevv1alpha1.StaticHost, _ client.Client) AWSConfiguration {
 	l := logf.FromContext(ctx).WithValues("StaticHost", staticHost.Name)
 	l.V(1).Info("building AWS configuration from StaticHost annotations")
@@ -149,7 +149,8 @@ func GetStaticAWSConfiguration(ctx context.Context, staticHost *maykonfluxcidevv
 }
 
 // GetDynamicAWSConfiguration returns the AWS configuration for a DynamicHost,
-// sourced from the host's annotations.
+// sourced from the host's annotations. The credentials Secret namespace is
+// always the host's namespace, not an annotation.
 func GetDynamicAWSConfiguration(ctx context.Context, dynamicHost *maykonfluxcidevv1alpha1.DynamicHost, _ client.Client) AWSConfiguration {
 	l := logf.FromContext(ctx).WithValues("DynamicHost", dynamicHost.Name)
 	l.V(1).Info("building AWS configuration from DynamicHost annotations")

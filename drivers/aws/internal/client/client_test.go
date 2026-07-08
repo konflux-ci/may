@@ -43,6 +43,34 @@ var _ = Describe("NewStaticEC2Client", func() {
 			Expect(ec2Client.Options().Region).Should(Equal("us-east-1"))
 		})
 	})
+
+	When("a system-namespace annotation points at another namespace", func() {
+		It("should read credentials from the host namespace only", func() {
+			ctx := context.Background()
+			host := &maykonfluxcidevv1alpha1.StaticHost{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "aws-static-host",
+					Namespace: "may-system",
+					Annotations: map[string]string{
+						internalconfig.AnnotationRegion:           "us-east-1",
+						internalconfig.AnnotationSecret:           "aws-account",
+						"aws.may.konflux-ci.dev/system-namespace": "other-namespace",
+					},
+				},
+			}
+			kubeClient := newTestKubeClient(awsCredentialsSecret("aws-account", "may-system", map[string][]byte{
+				secretKeyAccessKeyID:     []byte("AKIASTATIC"),
+				secretKeySecretAccessKey: []byte("static-secret"),
+			}))
+
+			ec2Client, err := NewStaticEC2Client(ctx, host, kubeClient)
+
+			Expect(err).ShouldNot(HaveOccurred())
+			creds, err := ec2Client.Options().Credentials.Retrieve(ctx)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(creds.AccessKeyID).Should(Equal("AKIASTATIC"))
+		})
+	})
 })
 
 var _ = Describe("NewDynamicEC2Client", func() {
