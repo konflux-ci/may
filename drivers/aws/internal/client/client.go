@@ -18,66 +18,32 @@ package client
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	internalconfig "github.com/konflux-ci/may/drivers/aws/internal/config"
 )
 
-// NewStaticEC2Client creates an EC2 client using the static AWS configuration.
-// Credentials are loaded from the Kubernetes Secret referenced in the host
-// annotations whenever the AWS SDK resolves credentials for this client.
-func NewStaticEC2Client(ctx context.Context, staticHost *maykonfluxcidevv1alpha1.StaticHost, kubeClient client.Client) (*ec2.Client, error) {
+// NewStaticEC2Client creates an EC2 client for a StaticHost using token-based
+// authentication. Use NewEC2ClientFactory when a different auth mode is needed.
+func NewStaticEC2Client(ctx context.Context, staticHost *maykonfluxcidevv1alpha1.StaticHost, kubeClient ctrlclient.Client) (*ec2.Client, error) {
 	cfg := internalconfig.GetStaticAWSConfiguration(ctx, staticHost, kubeClient)
-	return newEC2Client(ctx, kubeClient, cfg)
+	return newHostEC2Client(ctx, kubeClient, AuthModeToken, cfg)
 }
 
-// NewDynamicEC2Client creates an EC2 client using the dynamic AWS configuration.
-// Credentials are loaded from the Kubernetes Secret referenced in the host
-// annotations whenever the AWS SDK resolves credentials for this client.
-func NewDynamicEC2Client(ctx context.Context, dynamicHost *maykonfluxcidevv1alpha1.DynamicHost, kubeClient client.Client) (*ec2.Client, error) {
+// NewDynamicEC2Client creates an EC2 client for a DynamicHost using token-based
+// authentication. Use NewEC2ClientFactory when a different auth mode is needed.
+func NewDynamicEC2Client(ctx context.Context, dynamicHost *maykonfluxcidevv1alpha1.DynamicHost, kubeClient ctrlclient.Client) (*ec2.Client, error) {
 	cfg := internalconfig.GetDynamicAWSConfiguration(ctx, dynamicHost, kubeClient)
-	return newEC2Client(ctx, kubeClient, cfg)
+	return newHostEC2Client(ctx, kubeClient, AuthModeToken, cfg)
 }
 
-func newEC2Client(ctx context.Context, kubeClient client.Client, cfg internalconfig.AWSConfiguration) (*ec2.Client, error) {
-	if err := validateAWSConfiguration(cfg); err != nil {
+func newHostEC2Client(ctx context.Context, kubeClient ctrlclient.Client, mode AuthMode, cfg internalconfig.AWSConfiguration) (*ec2.Client, error) {
+	factory, err := NewEC2ClientFactory(mode, kubeClient)
+	if err != nil {
 		return nil, err
 	}
-
-	provider := &kubeSecretCredentialsProvider{
-		kubeClient:      kubeClient,
-		secretName:      cfg.Secret,
-		secretNamespace: cfg.SystemNamespace,
-	}
-
-	awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithRegion(cfg.Region),
-		awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(provider)),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
-	}
-
-	return ec2.NewFromConfig(awsCfg), nil
-}
-
-func validateAWSConfiguration(cfg internalconfig.AWSConfiguration) error {
-	var errs []error
-	if cfg.Region == "" {
-		errs = append(errs, fmt.Errorf("missing required annotation %q", internalconfig.AnnotationRegion))
-	}
-	if cfg.Secret == "" {
-		errs = append(errs, fmt.Errorf("missing required annotation %q", internalconfig.AnnotationSecret))
-	}
-	if cfg.SystemNamespace == "" {
-		errs = append(errs, fmt.Errorf("missing host namespace for AWS credentials secret lookup"))
-	}
-	return errors.Join(errs...)
+	return factory.NewEC2Client(ctx, cfg)
 }

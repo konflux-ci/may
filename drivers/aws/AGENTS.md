@@ -19,7 +19,7 @@ The driver intended to perform all kind of operations with EC2 instances in Amaz
 - `config/` — manifests
 - `internal/controller/` — controllers
 - `internal/config/` — internal configuration structs and parsers
-- `internal/client/` — AWS credentials composers and client constructors
+- `internal/client/` — EC2 client factories (token and service account auth)
 
 ## Key Conventions
 
