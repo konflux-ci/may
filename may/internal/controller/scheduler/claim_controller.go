@@ -269,7 +269,11 @@ func (r *ClaimReconciler) setClaimed(ctx context.Context, c *maykonfluxcidevv1al
 	if !claim.SetClaimed(c) {
 		return nil
 	}
-	return r.Status().Update(ctx, c)
+	if err := r.Status().Update(ctx, c); err != nil {
+		return err
+	}
+	claimsMatched.Inc()
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
