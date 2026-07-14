@@ -21,7 +21,6 @@ import (
 	"strconv"
 
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -33,7 +32,6 @@ const (
 	AnnotationAmi                     = annotationPrefix + "ami"
 	AnnotationInstanceType            = annotationPrefix + "instance-type"
 	AnnotationKeyName                 = annotationPrefix + "key-name"
-	AnnotationSecret                  = annotationPrefix + "secret"
 	AnnotationSecurityGroup           = annotationPrefix + "security-group"
 	AnnotationSecurityGroupId         = annotationPrefix + "security-group-id"
 	AnnotationSubnetId                = annotationPrefix + "subnet-id"
@@ -68,14 +66,6 @@ type AWSConfiguration struct {
 
 	// KeyName is the name of the SSH key inside of AWS.
 	KeyName string
-
-	// Secret is the name of the Kubernetes Secret that contains the AWS access
-	// key ID and secret access key.
-	Secret string
-
-	// SystemNamespace is always the host resource's namespace. AWS credentials
-	// are read from a Secret in this namespace; it is never taken from annotations.
-	SystemNamespace string
 
 	// SecurityGroup is the name of the security group to be used on the instance.
 	SecurityGroup string
@@ -131,14 +121,12 @@ type AWSConfiguration struct {
 }
 
 // GetStaticAWSConfiguration returns the AWS configuration for a StaticHost,
-// sourced from the host's annotations. The credentials Secret namespace is
-// always the host's namespace, not an annotation.
-func GetStaticAWSConfiguration(ctx context.Context, staticHost *maykonfluxcidevv1alpha1.StaticHost, _ client.Client) AWSConfiguration {
+// sourced from the host's annotations.
+func GetStaticAWSConfiguration(ctx context.Context, staticHost *maykonfluxcidevv1alpha1.StaticHost) AWSConfiguration {
 	l := logf.FromContext(ctx).WithValues("StaticHost", staticHost.Name)
 	l.V(1).Info("building AWS configuration from StaticHost annotations")
 
 	cfg := configurationFromAnnotations(staticHost.GetAnnotations())
-	cfg.SystemNamespace = staticHost.Namespace
 
 	l.V(1).Info("AWS configuration resolved",
 		"region", cfg.Region,
@@ -149,14 +137,12 @@ func GetStaticAWSConfiguration(ctx context.Context, staticHost *maykonfluxcidevv
 }
 
 // GetDynamicAWSConfiguration returns the AWS configuration for a DynamicHost,
-// sourced from the host's annotations. The credentials Secret namespace is
-// always the host's namespace, not an annotation.
-func GetDynamicAWSConfiguration(ctx context.Context, dynamicHost *maykonfluxcidevv1alpha1.DynamicHost, _ client.Client) AWSConfiguration {
+// sourced from the host's annotations.
+func GetDynamicAWSConfiguration(ctx context.Context, dynamicHost *maykonfluxcidevv1alpha1.DynamicHost) AWSConfiguration {
 	l := logf.FromContext(ctx).WithValues("DynamicHost", dynamicHost.Name)
 	l.V(1).Info("building AWS configuration from DynamicHost annotations")
 
 	cfg := configurationFromAnnotations(dynamicHost.GetAnnotations())
-	cfg.SystemNamespace = dynamicHost.Namespace
 
 	l.V(1).Info("AWS configuration resolved",
 		"region", cfg.Region,
@@ -175,7 +161,6 @@ func configurationFromAnnotations(annotations map[string]string) AWSConfiguratio
 		Ami:                     annotations[AnnotationAmi],
 		InstanceType:            annotations[AnnotationInstanceType],
 		KeyName:                 annotations[AnnotationKeyName],
-		Secret:                  annotations[AnnotationSecret],
 		SecurityGroup:           annotations[AnnotationSecurityGroup],
 		SecurityGroupId:         annotations[AnnotationSecurityGroupId],
 		SubnetId:                annotations[AnnotationSubnetId],

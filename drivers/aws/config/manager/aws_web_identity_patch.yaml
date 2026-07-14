@@ -1,0 +1,41 @@
+# Patches the controller Deployment for AWS web-identity auth from OpenShift.
+#
+# Prerequisites (cluster admin / platform team):
+#   1. Register the OpenShift service-account OIDC issuer with AWS IAM.
+#   2. Create an IAM role with an AssumeRoleWithWebIdentity trust policy whose
+#      "sub" condition matches:
+#        system:serviceaccount:<controller-namespace>:controller-manager
+#   3. Attach an IAM policy that grants only the EC2 API actions required by
+#      this driver.
+#
+# Replace AWS_ROLE_ARN below with the role ARN for your environment, then add
+# this file to config/manager/kustomization.yaml under patches.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      serviceAccountName: controller-manager
+      volumes:
+      - name: aws-iam-token
+        projected:
+          defaultMode: 420
+          sources:
+          - serviceAccountToken:
+              path: token
+              expirationSeconds: 3600
+              audience: sts.amazonaws.com
+      containers:
+      - name: manager
+        env:
+        - name: AWS_ROLE_ARN
+          value: arn:aws:iam::ACCOUNT_ID:role/REPLACE_ME
+        - name: AWS_WEB_IDENTITY_TOKEN_FILE
+          value: /var/run/secrets/aws/token
+        volumeMounts:
+        - name: aws-iam-token
+          mountPath: /var/run/secrets/aws
+          readOnly: true

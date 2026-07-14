@@ -88,7 +88,6 @@ var _ = Describe("configurationFromAnnotations", func() {
 				AnnotationAmi:                     "ami-0123456789abcdef0",
 				AnnotationInstanceType:            "m6a.4xlarge",
 				AnnotationKeyName:                 "my-key",
-				AnnotationSecret:                  "aws-account",
 				AnnotationSecurityGroup:           "launch-wizard-1",
 				AnnotationSecurityGroupId:         "sg-0123456789abcdef0",
 				AnnotationSubnetId:                "subnet-0123456789abcdef0",
@@ -110,7 +109,6 @@ var _ = Describe("configurationFromAnnotations", func() {
 				Ami:                     "ami-0123456789abcdef0",
 				InstanceType:            "m6a.4xlarge",
 				KeyName:                 "my-key",
-				Secret:                  "aws-account",
 				SecurityGroup:           "launch-wizard-1",
 				SecurityGroupId:         "sg-0123456789abcdef0",
 				SubnetId:                "subnet-0123456789abcdef0",
@@ -188,16 +186,6 @@ var _ = Describe("configurationFromAnnotations", func() {
 			Expect(cfg).Should(Equal(AWSConfiguration{Region: "ap-southeast-2"}))
 		})
 	})
-
-	When("a deprecated system-namespace annotation is present", func() {
-		It("should not populate SystemNamespace from annotations", func() {
-			cfg := configurationFromAnnotations(map[string]string{
-				deprecatedSystemNamespaceAnnotation: "other-namespace",
-			})
-
-			Expect(cfg.SystemNamespace).Should(BeEmpty())
-		})
-	})
 })
 
 var _ = Describe("GetStaticAWSConfiguration", func() {
@@ -211,40 +199,17 @@ var _ = Describe("GetStaticAWSConfiguration", func() {
 						AnnotationRegion:       "us-west-2",
 						AnnotationAmi:          "ami-static",
 						AnnotationInstanceType: "t4g.medium",
-						AnnotationSecret:       "aws-secret",
 					},
 				},
 			}
 
-			cfg := GetStaticAWSConfiguration(context.Background(), host, nil)
+			cfg := GetStaticAWSConfiguration(context.Background(), host)
 
 			Expect(cfg).Should(Equal(AWSConfiguration{
-				Region:          "us-west-2",
-				Ami:             "ami-static",
-				InstanceType:    "t4g.medium",
-				Secret:          "aws-secret",
-				SystemNamespace: "may-system",
+				Region:       "us-west-2",
+				Ami:          "ami-static",
+				InstanceType: "t4g.medium",
 			}))
-		})
-	})
-
-	When("a system-namespace annotation conflicts with the host namespace", func() {
-		It("should use the host namespace for credential lookup", func() {
-			host := &maykonfluxcidevv1alpha1.StaticHost{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "aws-host-arm64",
-					Namespace: "may-system",
-					Annotations: map[string]string{
-						AnnotationRegion:                    "us-west-2",
-						AnnotationSecret:                    "aws-secret",
-						deprecatedSystemNamespaceAnnotation: "other-namespace",
-					},
-				},
-			}
-
-			cfg := GetStaticAWSConfiguration(context.Background(), host, nil)
-
-			Expect(cfg.SystemNamespace).Should(Equal("may-system"))
 		})
 	})
 })
@@ -260,47 +225,20 @@ var _ = Describe("GetDynamicAWSConfiguration", func() {
 						AnnotationRegion:       "us-east-1",
 						AnnotationAmi:          "ami-dynamic",
 						AnnotationInstanceType: "m6a.4xlarge",
-						AnnotationSecret:       "aws-account",
 					},
 				},
 			}
 
-			cfg := GetDynamicAWSConfiguration(context.Background(), host, nil)
+			cfg := GetDynamicAWSConfiguration(context.Background(), host)
 
 			Expect(cfg).Should(Equal(AWSConfiguration{
-				Region:          "us-east-1",
-				Ami:             "ami-dynamic",
-				InstanceType:    "m6a.4xlarge",
-				Secret:          "aws-account",
-				SystemNamespace: "may-system",
+				Region:       "us-east-1",
+				Ami:          "ami-dynamic",
+				InstanceType: "m6a.4xlarge",
 			}))
 		})
 	})
-
-	When("a system-namespace annotation conflicts with the host namespace", func() {
-		It("should use the host namespace for credential lookup", func() {
-			host := &maykonfluxcidevv1alpha1.DynamicHost{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "aws-host-amd64",
-					Namespace: "may-system",
-					Annotations: map[string]string{
-						AnnotationRegion:                    "us-east-1",
-						AnnotationSecret:                    "aws-account",
-						deprecatedSystemNamespaceAnnotation: "other-namespace",
-					},
-				},
-			}
-
-			cfg := GetDynamicAWSConfiguration(context.Background(), host, nil)
-
-			Expect(cfg.SystemNamespace).Should(Equal("may-system"))
-		})
-	})
 })
-
-// deprecatedSystemNamespaceAnnotation was never honored; kept in tests to ensure
-// a user-supplied namespace cannot steer credential Secret lookups.
-const deprecatedSystemNamespaceAnnotation = "aws.may.konflux-ci.dev/system-namespace"
 
 func int32Ptr(v int32) *int32 {
 	return &v

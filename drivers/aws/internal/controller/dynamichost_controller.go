@@ -32,7 +32,6 @@ type DynamicHostReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 // +kubebuilder:rbac:groups=may.konflux-ci.dev.konflux-ci.dev,resources=dynamichosts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=may.konflux-ci.dev.konflux-ci.dev,resources=dynamichosts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=may.konflux-ci.dev.konflux-ci.dev,resources=dynamichosts/finalizers,verbs=update
