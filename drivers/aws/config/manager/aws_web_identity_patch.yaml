@@ -8,6 +8,9 @@
 #   3. Attach an IAM policy that grants only the EC2 API actions required by
 #      this driver.
 #
+# AWS_EC2_METADATA_DISABLED prevents the SDK from falling back to the node
+# instance metadata service if web-identity env vars are misconfigured.
+#
 # Replace AWS_ROLE_ARN below with the role ARN for your environment, then add
 # this file to config/manager/kustomization.yaml under patches.
 apiVersion: apps/v1
@@ -35,6 +38,8 @@ spec:
           value: arn:aws:iam::ACCOUNT_ID:role/REPLACE_ME
         - name: AWS_WEB_IDENTITY_TOKEN_FILE
           value: /var/run/secrets/aws/token
+        - name: AWS_EC2_METADATA_DISABLED
+          value: "true"
         volumeMounts:
         - name: aws-iam-token
           mountPath: /var/run/secrets/aws

@@ -64,6 +64,11 @@ the OIDC trust in AWS and the token projection in the Deployment.
 2. Enable `config/manager/aws_web_identity_patch.yaml` in the manager kustomization.
 3. Set `AWS_ROLE_ARN` in that patch to the IAM role ARN for the environment.
 
+The patch also sets `AWS_EC2_METADATA_DISABLED=true` so the SDK cannot fall
+back to the node instance metadata service if web-identity env vars are wrong.
+When both web-identity env vars are set, client creation verifies the token file
+exists before calling the EC2 API.
+
 Local development can use exported `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
 or an `AWS_PROFILE` instead of web identity.
 

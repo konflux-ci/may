@@ -18,8 +18,8 @@ package client
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"os"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -88,13 +88,21 @@ func NewDynamicEC2Client(ctx context.Context, dynamicHost *maykonfluxcidevv1alph
 //   b. Web identity: AWS_WEB_IDENTITY_TOKEN_FILE + AWS_ROLE_ARN
 //      — production on OpenShift.
 //   c. Container credentials URIs (AWS_CONTAINER_CREDENTIALS_*).
-//   d. EC2 instance metadata — not used for this deployment model.
+//   d. EC2 instance metadata — disabled in production via
+//      AWS_EC2_METADATA_DISABLED=true in aws_web_identity_patch.yaml.
 //
 // When AWS_PROFILE is set, the shared config profile takes precedence over (a)
 // and (b). Local development typically uses (a) or a profile; production on
 // OpenShift uses (b). See AGENTS.md ("Local development") for setup details.
+//
+// If AWS_WEB_IDENTITY_TOKEN_FILE and AWS_ROLE_ARN are set (production), the
+// driver verifies both are present, the token file exists, and refuses to start
+// when web identity is only partially configured.
 func newEC2Client(ctx context.Context, cfg internalconfig.AWSConfiguration) (*ec2.Client, error) {
 	if err := validateAWSConfiguration(cfg); err != nil {
+		return nil, err
+	}
+	if err := validateCredentialEnvironment(); err != nil {
 		return nil, err
 	}
 
@@ -110,7 +118,31 @@ func newEC2Client(ctx context.Context, cfg internalconfig.AWSConfiguration) (*ec
 
 func validateAWSConfiguration(cfg internalconfig.AWSConfiguration) error {
 	if cfg.Region == "" {
-		return errors.Join(fmt.Errorf("missing required annotation %q", internalconfig.AnnotationRegion))
+		return fmt.Errorf("missing required annotation %q", internalconfig.AnnotationRegion)
 	}
+	return nil
+}
+
+func validateCredentialEnvironment() error {
+	tokenFile := os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE")
+	roleARN := os.Getenv("AWS_ROLE_ARN")
+
+	hasTokenFile := tokenFile != ""
+	hasRoleARN := roleARN != ""
+
+	if hasTokenFile != hasRoleARN {
+		return fmt.Errorf(
+			"AWS web-identity auth requires both AWS_WEB_IDENTITY_TOKEN_FILE and AWS_ROLE_ARN",
+		)
+	}
+
+	if !hasTokenFile {
+		return nil
+	}
+
+	if _, err := os.Stat(tokenFile); err != nil {
+		return fmt.Errorf("AWS web-identity token file %q: %w", tokenFile, err)
+	}
+
 	return nil
 }

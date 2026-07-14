@@ -19,6 +19,7 @@ package config
 import (
 	"context"
 
+	"github.com/go-logr/logr"
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -28,7 +29,7 @@ import (
 var _ = Describe("parseInt32", func() {
 	DescribeTable("integer annotation parsing",
 		func(input string, expected int32) {
-			Expect(parseInt32(input)).Should(Equal(expected))
+			Expect(parseInt32(logr.Discard(), AnnotationDisk, input)).Should(Equal(expected))
 		},
 		Entry("an empty string", "", int32(0)),
 		Entry("a valid integer", "40", int32(40)),
@@ -41,7 +42,7 @@ var _ = Describe("parseInt32", func() {
 var _ = Describe("parseOptionalInt32", func() {
 	DescribeTable("optional integer annotation parsing",
 		func(input string, expected *int32) {
-			Expect(parseOptionalInt32(input)).Should(Equal(expected))
+			Expect(parseOptionalInt32(logr.Discard(), AnnotationThroughput, input)).Should(Equal(expected))
 		},
 		Entry("an empty string", "", nil),
 		Entry("a valid integer", "125", int32Ptr(125)),
@@ -52,7 +53,7 @@ var _ = Describe("parseOptionalInt32", func() {
 var _ = Describe("parseBool", func() {
 	DescribeTable("boolean annotation parsing",
 		func(input string, expected bool) {
-			Expect(parseBool(input)).Should(Equal(expected))
+			Expect(parseBool(logr.Discard(), AnnotationStrictPublicAddress, input)).Should(Equal(expected))
 		},
 		Entry("an empty string", "", false),
 		Entry("true", "true", true),
@@ -71,13 +72,13 @@ var _ = Describe("configurationFromAnnotations", func() {
 
 	When("annotations are nil", func() {
 		It("should return a zero configuration", func() {
-			Expect(configurationFromAnnotations(nil)).Should(Equal(AWSConfiguration{}))
+			Expect(configurationFromAnnotations(nil, logr.Discard())).Should(Equal(AWSConfiguration{}))
 		})
 	})
 
 	When("annotations are empty", func() {
 		It("should return a zero configuration", func() {
-			Expect(configurationFromAnnotations(map[string]string{})).Should(Equal(AWSConfiguration{}))
+			Expect(configurationFromAnnotations(map[string]string{}, logr.Discard())).Should(Equal(AWSConfiguration{}))
 		})
 	})
 
@@ -102,7 +103,7 @@ var _ = Describe("configurationFromAnnotations", func() {
 				AnnotationHostResourceGroupArn:    "arn:aws:resource-groups:us-east-1:123456789012:group/my-group",
 				AnnotationLicenseConfigurationArn: "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-0123456789abcdef0",
 				AnnotationStrictPublicAddress:     "true",
-			})
+			}, logr.Discard())
 
 			Expect(cfg).Should(Equal(AWSConfiguration{
 				Region:                  "us-east-1",
@@ -131,7 +132,7 @@ var _ = Describe("configurationFromAnnotations", func() {
 		It("should leave pointer fields nil", func() {
 			cfg := configurationFromAnnotations(map[string]string{
 				AnnotationRegion: "eu-west-1",
-			})
+			}, logr.Discard())
 
 			Expect(cfg).Should(Equal(AWSConfiguration{Region: "eu-west-1"}))
 			Expect(cfg.Throughput).Should(BeNil())
@@ -146,7 +147,7 @@ var _ = Describe("configurationFromAnnotations", func() {
 				AnnotationThroughput: "",
 				AnnotationIops:       "",
 				AnnotationUserData:   "",
-			})
+			}, logr.Discard())
 
 			Expect(cfg.Throughput).Should(BeNil())
 			Expect(cfg.Iops).Should(BeNil())
@@ -159,7 +160,7 @@ var _ = Describe("configurationFromAnnotations", func() {
 			cfg := configurationFromAnnotations(map[string]string{
 				AnnotationThroughput: "not-a-number",
 				AnnotationIops:       "also-invalid",
-			})
+			}, logr.Discard())
 
 			Expect(cfg.Throughput).Should(BeNil())
 			Expect(cfg.Iops).Should(BeNil())
@@ -170,7 +171,7 @@ var _ = Describe("configurationFromAnnotations", func() {
 		It("should default disk to zero", func() {
 			cfg := configurationFromAnnotations(map[string]string{
 				AnnotationDisk: "not-a-number",
-			})
+			}, logr.Discard())
 
 			Expect(cfg.Disk).Should(Equal(int32(0)))
 		})
@@ -181,7 +182,7 @@ var _ = Describe("configurationFromAnnotations", func() {
 			cfg := configurationFromAnnotations(map[string]string{
 				AnnotationRegion:            "ap-southeast-2",
 				"may.konflux-ci.dev/driver": "aws",
-			})
+			}, logr.Discard())
 
 			Expect(cfg).Should(Equal(AWSConfiguration{Region: "ap-southeast-2"}))
 		})

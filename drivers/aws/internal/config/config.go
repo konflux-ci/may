@@ -20,6 +20,7 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/go-logr/logr"
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -126,7 +127,7 @@ func GetStaticAWSConfiguration(ctx context.Context, staticHost *maykonfluxcidevv
 	l := logf.FromContext(ctx).WithValues("StaticHost", staticHost.Name)
 	l.V(1).Info("building AWS configuration from StaticHost annotations")
 
-	cfg := configurationFromAnnotations(staticHost.GetAnnotations())
+	cfg := configurationFromAnnotations(staticHost.GetAnnotations(), l)
 
 	l.V(1).Info("AWS configuration resolved",
 		"region", cfg.Region,
@@ -142,7 +143,7 @@ func GetDynamicAWSConfiguration(ctx context.Context, dynamicHost *maykonfluxcide
 	l := logf.FromContext(ctx).WithValues("DynamicHost", dynamicHost.Name)
 	l.V(1).Info("building AWS configuration from DynamicHost annotations")
 
-	cfg := configurationFromAnnotations(dynamicHost.GetAnnotations())
+	cfg := configurationFromAnnotations(dynamicHost.GetAnnotations(), l)
 
 	l.V(1).Info("AWS configuration resolved",
 		"region", cfg.Region,
@@ -155,7 +156,8 @@ func GetDynamicAWSConfiguration(ctx context.Context, dynamicHost *maykonfluxcide
 // configurationFromAnnotations extracts an AWSConfiguration from a map of
 // Kubernetes annotations. Missing keys result in zero-values for the
 // corresponding fields; pointer fields remain nil if their annotation is absent.
-func configurationFromAnnotations(annotations map[string]string) AWSConfiguration {
+// Invalid values are ignored and logged.
+func configurationFromAnnotations(annotations map[string]string, l logr.Logger) AWSConfiguration {
 	cfg := AWSConfiguration{
 		Region:                  annotations[AnnotationRegion],
 		Ami:                     annotations[AnnotationAmi],
@@ -164,22 +166,22 @@ func configurationFromAnnotations(annotations map[string]string) AWSConfiguratio
 		SecurityGroup:           annotations[AnnotationSecurityGroup],
 		SecurityGroupId:         annotations[AnnotationSecurityGroupId],
 		SubnetId:                annotations[AnnotationSubnetId],
-		Disk:                    parseInt32(annotations[AnnotationDisk]),
+		Disk:                    parseInt32(l, AnnotationDisk, annotations[AnnotationDisk]),
 		MaxSpotInstancePrice:    annotations[AnnotationMaxSpotInstancePrice],
 		InstanceProfileName:     annotations[AnnotationInstanceProfileName],
 		InstanceProfileArn:      annotations[AnnotationInstanceProfileArn],
 		Tenancy:                 annotations[AnnotationTenancy],
 		HostResourceGroupArn:    annotations[AnnotationHostResourceGroupArn],
 		LicenseConfigurationArn: annotations[AnnotationLicenseConfigurationArn],
-		StrictPublicAddress:     parseBool(annotations[AnnotationStrictPublicAddress]),
+		StrictPublicAddress:     parseBool(l, AnnotationStrictPublicAddress, annotations[AnnotationStrictPublicAddress]),
 	}
 
 	if v, ok := annotations[AnnotationThroughput]; ok {
-		cfg.Throughput = parseOptionalInt32(v)
+		cfg.Throughput = parseOptionalInt32(l, AnnotationThroughput, v)
 	}
 
 	if v, ok := annotations[AnnotationIops]; ok {
-		cfg.Iops = parseOptionalInt32(v)
+		cfg.Iops = parseOptionalInt32(l, AnnotationIops, v)
 	}
 
 	if v, ok := annotations[AnnotationUserData]; ok {
@@ -191,12 +193,13 @@ func configurationFromAnnotations(annotations map[string]string) AWSConfiguratio
 
 // parseInt32 parses a string as a base-10 int32. Returns 0 if the string is
 // empty or cannot be parsed.
-func parseInt32(s string) int32 {
-	if s == "" {
+func parseInt32(l logr.Logger, annotation, value string) int32 {
+	if value == "" {
 		return 0
 	}
-	v, err := strconv.ParseInt(s, 10, 32)
+	v, err := strconv.ParseInt(value, 10, 32)
 	if err != nil {
+		l.Info("ignoring invalid AWS annotation value", "annotation", annotation, "value", value, "error", err.Error())
 		return 0
 	}
 	return int32(v)
@@ -204,12 +207,13 @@ func parseInt32(s string) int32 {
 
 // parseOptionalInt32 parses an optional int32 annotation. Empty strings return
 // nil. Invalid values are ignored so callers can distinguish them from zero.
-func parseOptionalInt32(s string) *int32 {
-	if s == "" {
+func parseOptionalInt32(l logr.Logger, annotation, value string) *int32 {
+	if value == "" {
 		return nil
 	}
-	v, err := strconv.ParseInt(s, 10, 32)
+	v, err := strconv.ParseInt(value, 10, 32)
 	if err != nil {
+		l.Info("ignoring invalid AWS annotation value", "annotation", annotation, "value", value, "error", err.Error())
 		return nil
 	}
 	parsed := int32(v)
@@ -218,12 +222,13 @@ func parseOptionalInt32(s string) *int32 {
 
 // parseBool parses a string as a boolean. Returns false if the string is empty
 // or cannot be parsed.
-func parseBool(s string) bool {
-	if s == "" {
+func parseBool(l logr.Logger, annotation, value string) bool {
+	if value == "" {
 		return false
 	}
-	v, err := strconv.ParseBool(s)
+	v, err := strconv.ParseBool(value)
 	if err != nil {
+		l.Info("ignoring invalid AWS annotation value", "annotation", annotation, "value", value, "error", err.Error())
 		return false
 	}
 	return v
