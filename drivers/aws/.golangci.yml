@@ -23,6 +23,8 @@ linters:
     - unparam
     - unused
   settings:
+    ginkgolinter:
+      forbid-focus-container: true
     revive:
       rules:
         - name: comment-spacings
