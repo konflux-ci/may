@@ -70,26 +70,27 @@ func NewDynamicEC2Client(ctx context.Context, dynamicHost *maykonfluxcidevv1alph
 //
 // Operator setup (cluster/platform team, outside this package):
 //
-//  AWS:
-//   - Register an IAM OIDC identity provider for the OpenShift service-account
-//     issuer URL (the API server --service-account-issuer value).
-//   - Create an IAM role with AssumeRoleWithWebIdentity trust, scoped to
-//     subject system:serviceaccount:<controller-namespace>:controller-manager.
-//   - Attach a least-privilege IAM policy for the EC2 actions this driver needs.
+//	AWS:
+//	 - Register an IAM OIDC identity provider for the OpenShift service-account
+//	   issuer URL (the API server --service-account-issuer value).
+//	 - Create an IAM role with AssumeRoleWithWebIdentity trust, scoped to
+//	   subject system:serviceaccount:<controller-namespace>:controller-manager.
+//	 - Attach a least-privilege IAM policy for the EC2 actions this driver needs.
 //
-//  OpenShift:
-//   - Deploy the controller with the controller-manager ServiceAccount.
-//   - Enable the aws_web_identity_patch.yaml overlay and set AWS_ROLE_ARN for
-//     the target environment.
+//	OpenShift:
+//	 - Deploy the controller with the controller-manager ServiceAccount.
+//	 - Enable the aws_web_identity_patch.yaml overlay and set AWS_ROLE_ARN for
+//	   the target environment.
 //
 // SDK credential resolution order (first match wins when AWS_PROFILE is unset):
-//   a. Static env vars: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-//      [and optionally AWS_SESSION_TOKEN] — local development only.
-//   b. Web identity: AWS_WEB_IDENTITY_TOKEN_FILE + AWS_ROLE_ARN
-//      — production on OpenShift.
-//   c. Container credentials URIs (AWS_CONTAINER_CREDENTIALS_*).
-//   d. EC2 instance metadata — disabled in production via
-//      AWS_EC2_METADATA_DISABLED=true in aws_web_identity_patch.yaml.
+//
+//	a. Static env vars: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+//	   [and optionally AWS_SESSION_TOKEN] — local development only.
+//	b. Web identity: AWS_WEB_IDENTITY_TOKEN_FILE + AWS_ROLE_ARN
+//	   — production on OpenShift.
+//	c. Container credentials URIs (AWS_CONTAINER_CREDENTIALS_*).
+//	d. EC2 instance metadata — disabled in production via
+//	   AWS_EC2_METADATA_DISABLED=true in aws_web_identity_patch.yaml.
 //
 // When AWS_PROFILE is set, the shared config profile takes precedence over (a)
 // and (b). Local development typically uses (a) or a profile; production on

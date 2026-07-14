@@ -60,14 +60,14 @@ var _ = Describe("validateCredentialEnvironment", func() {
 	})
 
 	AfterEach(func() {
-		setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", originalTokenFile)
-		setEnvOrUnset("AWS_ROLE_ARN", originalRoleARN)
+		Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", originalTokenFile)).Should(Succeed())
+		Expect(setEnvOrUnset("AWS_ROLE_ARN", originalRoleARN)).Should(Succeed())
 	})
 
 	When("web-identity env vars are unset", func() {
 		It("should allow the SDK default credential chain", func() {
-			os.Unsetenv("AWS_WEB_IDENTITY_TOKEN_FILE")
-			os.Unsetenv("AWS_ROLE_ARN")
+			Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", "")).Should(Succeed())
+			Expect(setEnvOrUnset("AWS_ROLE_ARN", "")).Should(Succeed())
 
 			Expect(validateCredentialEnvironment()).ShouldNot(HaveOccurred())
 		})
@@ -75,8 +75,8 @@ var _ = Describe("validateCredentialEnvironment", func() {
 
 	When("only AWS_WEB_IDENTITY_TOKEN_FILE is set", func() {
 		It("should return an error", func() {
-			os.Setenv("AWS_WEB_IDENTITY_TOKEN_FILE", "/var/run/secrets/aws/token")
-			os.Unsetenv("AWS_ROLE_ARN")
+			Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", "/var/run/secrets/aws/token")).Should(Succeed())
+			Expect(setEnvOrUnset("AWS_ROLE_ARN", "")).Should(Succeed())
 
 			err := validateCredentialEnvironment()
 
@@ -88,8 +88,8 @@ var _ = Describe("validateCredentialEnvironment", func() {
 
 	When("only AWS_ROLE_ARN is set", func() {
 		It("should return an error", func() {
-			os.Unsetenv("AWS_WEB_IDENTITY_TOKEN_FILE")
-			os.Setenv("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/example")
+			Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", "")).Should(Succeed())
+			Expect(setEnvOrUnset("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/example")).Should(Succeed())
 
 			err := validateCredentialEnvironment()
 
@@ -101,8 +101,8 @@ var _ = Describe("validateCredentialEnvironment", func() {
 
 	When("web-identity env vars are set but the token file is missing", func() {
 		It("should return an error", func() {
-			os.Setenv("AWS_WEB_IDENTITY_TOKEN_FILE", "/tmp/missing-aws-web-identity-token")
-			os.Setenv("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/example")
+			Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", "/tmp/missing-aws-web-identity-token")).Should(Succeed())
+			Expect(setEnvOrUnset("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/example")).Should(Succeed())
 
 			err := validateCredentialEnvironment()
 
@@ -115,10 +115,12 @@ var _ = Describe("validateCredentialEnvironment", func() {
 		It("should not return an error", func() {
 			tokenFile, err := os.CreateTemp("", "aws-web-identity-token")
 			Expect(err).ShouldNot(HaveOccurred())
-			defer os.Remove(tokenFile.Name())
+			DeferCleanup(func() {
+				Expect(os.Remove(tokenFile.Name())).Should(Succeed())
+			})
 
-			os.Setenv("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFile.Name())
-			os.Setenv("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/example")
+			Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFile.Name())).Should(Succeed())
+			Expect(setEnvOrUnset("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/example")).Should(Succeed())
 
 			Expect(validateCredentialEnvironment()).ShouldNot(HaveOccurred())
 		})
@@ -191,10 +193,9 @@ var _ = Describe("NewDynamicEC2Client", func() {
 	})
 })
 
-func setEnvOrUnset(key, value string) {
+func setEnvOrUnset(key, value string) error {
 	if value == "" {
-		os.Unsetenv(key)
-		return
+		return os.Unsetenv(key)
 	}
-	os.Setenv(key, value)
+	return os.Setenv(key, value)
 }
