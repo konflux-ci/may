@@ -38,7 +38,7 @@ import (
 // A single test covers: happy path (Claim created → Claimed → gate removed → Pod scheduled)
 // and Pod completion (Pod Succeeded → Claim deleted → Runner released).
 func FullFlowContexts() {
-	Context("Full Flow (Pod → Claim → Schedule → Run)", Ordered, func() {
+	Context("Full Flow (Pod → Claim → Schedule → Run)", Ordered, Label("full-flow"), func() {
 		BeforeAll(func() {
 			By("creating tenant namespace for Full Flow tests")
 			cmd := exec.Command("kubectl", "create", "namespace", fullFlowTestNamespace)

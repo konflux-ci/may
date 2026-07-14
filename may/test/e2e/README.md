@@ -157,3 +157,23 @@ make test-e2e
 ```
 
 This creates a Kind cluster (`may-test-e2e` by default), builds the may controller image, loads it into Kind, installs cert-manager if needed, installs the OTP server from multi-platform-controller (see `demo/dependencies/multi-platform-controller/config/otp`), runs the tests, then tears down the cluster. Requires Kind and `kubectl`. Optional: `CERT_MANAGER_INSTALL_SKIP=true`, `OTP_SERVER_INSTALL_SKIP=true` to skip installing cert-manager or the OTP server when already present.
+
+## Troubleshooting
+
+### Pod errors due to "too many open files"
+
+This is a [known Kind issue](https://kind.sigs.k8s.io/docs/user/known-issues/#pod-errors-due-to-too-many-open-files) caused by running out of inotify resources. The default values of `fs.inotify.max_user_watches` and `fs.inotify.max_user_instances` may be too low for Kind clusters.
+
+To fix temporarily:
+
+```bash
+sudo sysctl fs.inotify.max_user_watches=524288
+sudo sysctl fs.inotify.max_user_instances=512
+```
+
+To make the change persistent, add the following to `/etc/sysctl.conf`:
+
+```
+fs.inotify.max_user_watches = 524288
+fs.inotify.max_user_instances = 512
+```
