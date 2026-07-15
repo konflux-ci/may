@@ -265,7 +265,7 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
 				g.Expect(metricsOutput).NotTo(BeEmpty())
 				g.Expect(metricsOutput).To(ContainSubstring("< HTTP/1.1 200 OK"))
-				g.Expect(metricsOutput).To(ContainSubstring("may_claims_matched"))
+				g.Expect(metricsOutput).To(ContainSubstring("may_claim_matched"))
 			}
 			Eventually(verifyMetricsAvailable, 2*time.Minute).Should(Succeed())
 		})

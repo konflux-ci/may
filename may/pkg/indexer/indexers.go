@@ -8,12 +8,11 @@ import (
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	"github.com/konflux-ci/may/pkg/claim"
 	"github.com/konflux-ci/may/pkg/runner"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func SetupFieldIndexers(ctx context.Context, mgr ctrl.Manager, setupLog logr.Logger) error {
-	if err := mgr.GetFieldIndexer().
+func SetupFieldIndexers(ctx context.Context, fieldIndexer client.FieldIndexer, setupLog logr.Logger) error {
+	if err := fieldIndexer.
 		IndexField(
 			ctx,
 			&maykonfluxcidevv1alpha1.Runner{},
@@ -33,7 +32,7 @@ func SetupFieldIndexers(ctx context.Context, mgr ctrl.Manager, setupLog logr.Log
 		setupLog.Error(err, fmt.Sprintf("unable to set up Runner Indexer for `%s`", runner.FieldStatusReady))
 		return err
 	}
-	if err := mgr.GetFieldIndexer().
+	if err := fieldIndexer.
 		IndexField(
 			ctx,
 			&maykonfluxcidevv1alpha1.Runner{},
@@ -53,7 +52,7 @@ func SetupFieldIndexers(ctx context.Context, mgr ctrl.Manager, setupLog logr.Log
 		setupLog.Error(err, fmt.Sprintf("unable to set up Runner Indexer for `%s`", runner.FieldStatusReady))
 		return err
 	}
-	if err := mgr.GetFieldIndexer().
+	if err := fieldIndexer.
 		IndexField(
 			ctx,
 			&maykonfluxcidevv1alpha1.Runner{},
@@ -73,7 +72,7 @@ func SetupFieldIndexers(ctx context.Context, mgr ctrl.Manager, setupLog logr.Log
 		setupLog.Error(err, fmt.Sprintf("unable to set up Runner Indexer for `%s`", runner.FieldSpecInUseBy))
 		return err
 	}
-	if err := mgr.GetFieldIndexer().
+	if err := fieldIndexer.
 		IndexField(
 			ctx,
 			&maykonfluxcidevv1alpha1.Claim{},
@@ -89,7 +88,7 @@ func SetupFieldIndexers(ctx context.Context, mgr ctrl.Manager, setupLog logr.Log
 		setupLog.Error(err, fmt.Sprintf("unable to set up Claim Indexer for `%s`", claim.FieldStatusConditionClaimed))
 		return err
 	}
-	if err := mgr.GetFieldIndexer().
+	if err := fieldIndexer.
 		IndexField(
 			ctx,
 			&maykonfluxcidevv1alpha1.Runner{},
@@ -109,7 +108,7 @@ func SetupFieldIndexers(ctx context.Context, mgr ctrl.Manager, setupLog logr.Log
 		setupLog.Error(err, fmt.Sprintf("unable to set up Runner Indexer for `%s`", runner.FieldSpecInUseByName))
 		return err
 	}
-	if err := mgr.GetFieldIndexer().
+	if err := fieldIndexer.
 		IndexField(
 			ctx,
 			&maykonfluxcidevv1alpha1.Runner{},

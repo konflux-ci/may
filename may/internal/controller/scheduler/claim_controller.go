@@ -272,7 +272,7 @@ func (r *ClaimReconciler) setClaimed(ctx context.Context, c *maykonfluxcidevv1al
 	if err := r.Status().Update(ctx, c); err != nil {
 		return err
 	}
-	claimsMatched.Inc()
+	claimMatched.Inc()
 	return nil
 }
 

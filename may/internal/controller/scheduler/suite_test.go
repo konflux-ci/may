@@ -20,14 +20,17 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -38,12 +41,14 @@ import (
 )
 
 var (
-	ctx       context.Context
-	cancel    context.CancelFunc
-	testEnv   *envtest.Environment
-	cfg       *rest.Config
-	k8sClient client.Client
-	mgrClient client.Client
+	ctx             context.Context
+	cancel          context.CancelFunc
+	testEnv         *envtest.Environment
+	cfg             *rest.Config
+	wg              sync.WaitGroup
+	k8sClientCache  cache.Cache
+	k8sCachedClient client.Client
+	k8sReader       client.Reader
 )
 
 func TestControllers(t *testing.T) {
@@ -74,27 +79,45 @@ var _ = BeforeSuite(func() {
 	Expect(err).ShouldNot(HaveOccurred())
 	Expect(cfg).ShouldNot(BeNil())
 
-	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
-	Expect(err).ShouldNot(HaveOccurred())
-	Expect(k8sClient).ShouldNot(BeNil())
-
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{Scheme: scheme.Scheme})
+	// setup direct API Server reader
+	k8sReader, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).ShouldNot(HaveOccurred())
 
-	Expect(indexer.SetupFieldIndexers(ctx, mgr, logf.Log)).Should(Succeed())
+	// setup cache with field indexers
+	k8sClientCache, err = cache.New(cfg, cache.Options{Scheme: scheme.Scheme})
+	Expect(err).ShouldNot(HaveOccurred())
+	Expect(indexer.SetupFieldIndexers(ctx, k8sClientCache, logr.Discard())).Should(Succeed())
 
-	go func() {
+	// setup the cached client
+	k8sCachedClient, err = client.New(cfg, client.Options{
+		Scheme: scheme.Scheme,
+		Cache: &client.CacheOptions{
+			Reader: k8sClientCache,
+		},
+	})
+	Expect(err).ShouldNot(HaveOccurred())
+	Expect(k8sCachedClient).ShouldNot(BeNil())
+
+	// start in background
+	wg.Go(func() {
 		defer GinkgoRecover()
-		Expect(mgr.Start(ctx)).Should(Succeed())
-	}()
+		Expect(k8sClientCache.Start(ctx)).Should(Or(
+			Succeed(),
+			MatchError(context.Canceled),
+			MatchError(context.DeadlineExceeded),
+		))
+	})
 
-	mgrClient = mgr.GetClient()
-	Expect(mgrClient).ShouldNot(BeNil())
+	// wait for cache to sync
+	Eventually(func(g Gomega) {
+		g.Expect(k8sClientCache.WaitForCacheSync(ctx)).Should(BeTrue())
+	}).WithTimeout(1 * time.Minute).Should(Succeed())
 })
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
 	cancel()
+	wg.Wait()
 	err := testEnv.Stop()
 	Expect(err).ShouldNot(HaveOccurred())
 })

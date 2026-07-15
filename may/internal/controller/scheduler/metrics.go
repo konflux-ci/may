@@ -21,13 +21,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
-var claimsMatched = prometheus.NewCounter(prometheus.CounterOpts{
+var claimMatched = prometheus.NewCounter(prometheus.CounterOpts{
 	Namespace: "may",
-	Subsystem: "claims",
+	Subsystem: "claim",
 	Name:      "matched",
 	Help:      "Total number of claims matched to a ready runner",
 })
 
 func init() {
-	metrics.Registry.MustRegister(claimsMatched)
+	metrics.Registry.MustRegister(claimMatched)
 }

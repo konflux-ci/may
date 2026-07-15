@@ -18,12 +18,14 @@ package scheduler
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	mayv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	"github.com/konflux-ci/may/pkg/claim"
+	"github.com/konflux-ci/may/pkg/constants"
 	"github.com/konflux-ci/may/pkg/runner"
 	"github.com/konflux-ci/may/pkg/scheduler"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -32,6 +34,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -53,25 +56,19 @@ var _ = Describe("ClaimReconciler", func() {
 				GenerateName: "scheduler-test-",
 			},
 		}
-		Expect(k8sClient.Create(ctx, ns)).Should(Succeed())
+		Expect(k8sCachedClient.Create(ctx, ns)).Should(Succeed())
 
 		reconciler = &ClaimReconciler{
-			Client:    mgrClient,
-			Scheduler: scheduler.New(mgrClient, scheme.Scheme, ns.Name),
+			Client:    k8sCachedClient,
+			Scheduler: scheduler.New(k8sCachedClient, scheme.Scheme, ns.Name),
 			Scheme:    scheme.Scheme,
 			Namespace: ns.Name,
 		}
 	})
 
 	AfterEach(func(ctx context.Context) {
-		Expect(k8sClient.Delete(ctx, ns)).Should(Succeed())
+		Expect(k8sCachedClient.Delete(ctx, ns)).Should(Succeed())
 	})
-
-	waitForCache := func(ctx context.Context, obj client.Object) {
-		Eventually(func() error {
-			return mgrClient.Get(ctx, client.ObjectKeyFromObject(obj), obj)
-		}).WithOffset(1).Should(Succeed())
-	}
 
 	createPod := func(ctx context.Context, phase corev1.PodPhase) *corev1.Pod {
 		p := &corev1.Pod{
@@ -85,13 +82,12 @@ var _ = Describe("ClaimReconciler", func() {
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, p)).Should(Succeed())
+		Expect(k8sCachedClient.Create(ctx, p)).Should(Succeed())
 
 		if phase != "" {
 			p.Status.Phase = phase
-			Expect(k8sClient.Status().Update(ctx, p)).Should(Succeed())
+			Expect(k8sCachedClient.Status().Update(ctx, p)).Should(Succeed())
 		}
-		waitForCache(ctx, p)
 		return p
 	}
 
@@ -108,23 +104,44 @@ var _ = Describe("ClaimReconciler", func() {
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, r)).Should(Succeed())
 
 		if len(statusOpts) > 0 {
 			for _, o := range statusOpts {
 				o(r)
 			}
-			Expect(k8sClient.Status().Update(ctx, r)).Should(Succeed())
 		}
-		waitForCache(ctx, r)
-		return r
+
+		// save status for later
+		s := r.Status
+
+		// create the Runner
+		r.Status = mayv1alpha1.RunnerStatus{}
+		Expect(k8sCachedClient.Create(ctx, r)).Should(Succeed())
+
+		// retrieve the Runner from the API Server
+		rr := mayv1alpha1.Runner{}
+		Expect(k8sReader.Get(ctx, client.ObjectKeyFromObject(r), &rr)).Should(Succeed())
+
+		// update the status
+		rr.Status = s
+		Expect(k8sCachedClient.Status().Update(ctx, &rr)).Should(Succeed())
+
+		// ensure the cached client is up to date
+		EventuallyWithOffset(1, func(g Gomega) {
+			g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(r), r)).Should(Succeed())
+			if len(statusOpts) > 0 {
+				g.Expect(runner.IsReady(*r)).Should(BeTrue())
+			}
+		}).WithTimeout(10 * time.Second).Should(Succeed())
+
+		return &rr
 	}
 
 	createReadyRunner := func(ctx context.Context, name, flv string) *mayv1alpha1.Runner {
 		return createRunner(ctx, name, flv, func(r *mayv1alpha1.Runner) { runner.SetReady(r) })
 	}
 
-	createPendingClaim := func(ctx context.Context, p *corev1.Pod) *mayv1alpha1.Claim {
+	createClaim := func(ctx context.Context, p *corev1.Pod, cacheCheck func(mayv1alpha1.Claim) bool, opts ...func(*mayv1alpha1.Claim)) *mayv1alpha1.Claim {
 		c := &mayv1alpha1.Claim{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      claimName,
@@ -140,35 +157,56 @@ var _ = Describe("ClaimReconciler", func() {
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, c)).Should(Succeed())
-		waitForCache(ctx, c)
 
-		By("reconciling until finalizer, owner ref and status conditions are set")
-		// Each Reconcile handles one gate (finalizer, owner ref, status init).
-		// Eventually retries through cache conflicts until the Claim reaches Pending.
-		Eventually(func(g Gomega) {
-			_, _ = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: client.ObjectKeyFromObject(c),
-			})
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
-			g.Expect(claim.IsPending(*c)).Should(BeTrue())
-		}).WithOffset(1).Should(Succeed())
-		return c
+		if len(opts) > 0 {
+			for _, o := range opts {
+				o(c)
+			}
+		}
+
+		// save status for later
+		s := c.Status
+
+		// create the Claim
+		c.Status = mayv1alpha1.ClaimStatus{}
+		Expect(k8sCachedClient.Create(ctx, c)).Should(Succeed())
+
+		// retrieve the Claim from the API Server
+		cc := mayv1alpha1.Claim{}
+		Expect(k8sReader.Get(ctx, client.ObjectKeyFromObject(c), &cc)).Should(Succeed())
+
+		// update the status
+		cc.Status = s
+		Expect(k8sCachedClient.Status().Update(ctx, &cc)).Should(Succeed())
+
+		// ensure the cached client is up to date
+		EventuallyWithOffset(1, func(g Gomega) {
+			g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
+			g.Expect(cacheCheck(*c)).Should(BeTrue())
+		}).WithTimeout(10 * time.Second).Should(Succeed())
+
+		return &cc
 	}
 
-	createClaimedClaim := func(ctx context.Context, p *corev1.Pod) *mayv1alpha1.Claim {
-		c := createPendingClaim(ctx, p)
+	createPendingClaim := func(ctx context.Context, p *corev1.Pod, opts ...func(*mayv1alpha1.Claim)) *mayv1alpha1.Claim {
+		return createClaim(ctx, p, claim.IsPending,
+			append(opts, func(c *mayv1alpha1.Claim) {
+				c.Finalizers = append(c.Finalizers, constants.ClaimControllerFinalizer)
+				Expect(controllerutil.SetControllerReference(p, c, k8sCachedClient.Scheme())).Should(Succeed())
+				claim.SetNotClaimed(c, claim.ConditionReasonPending, "no available runner")
+			})...,
+		)
+	}
 
-		By("setting Claim status to Claimed")
-		claim.SetClaimed(c)
-		Expect(k8sClient.Status().Update(ctx, c)).Should(Succeed())
-
-		Eventually(func(g Gomega) {
-			g.Expect(mgrClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
-			g.Expect(claim.IsClaimed(*c)).Should(BeTrue())
-		}).WithOffset(1).Should(Succeed())
-
-		return c
+	createClaimedClaim := func(ctx context.Context, p *corev1.Pod, opts ...func(*mayv1alpha1.Claim)) *mayv1alpha1.Claim {
+		return createClaim(ctx, p, claim.IsClaimed,
+			append(opts, func(c *mayv1alpha1.Claim) {
+				c.Finalizers = append(c.Finalizers, constants.ClaimControllerFinalizer)
+				Expect(controllerutil.SetControllerReference(p, c, k8sCachedClient.Scheme())).Should(Succeed())
+				claim.SetToSchedule(c)
+				claim.SetClaimed(c)
+			})...,
+		)
 	}
 
 	reconcileClaim := func(ctx context.Context, c *mayv1alpha1.Claim) (reconcile.Result, error) {
@@ -176,6 +214,33 @@ var _ = Describe("ClaimReconciler", func() {
 			NamespacedName: client.ObjectKeyFromObject(c),
 		})
 	}
+
+	When("cached client sync", func() {
+		It("should reflect Runner Spec and Status from the API Server", func(ctx context.Context) {
+			By("creating a Ready Runner")
+			rr := createReadyRunner(ctx, "sync-runner", flavor)
+
+			By("verifying the cached client returns the same Spec and Status")
+			cached := &mayv1alpha1.Runner{}
+			Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(rr), cached)).Should(Succeed())
+			Expect(cached.Spec).Should(BeEquivalentTo(rr.Spec))
+			Expect(cached.Status.Conditions).ShouldNot(BeEmpty())
+			Expect(runner.IsReady(*cached)).Should(BeTrue())
+		})
+
+		It("should reflect Claim Spec and Status from the API Server", func(ctx context.Context) {
+			By("creating a pod and a Pending Claim")
+			p := createPod(ctx, "")
+			cc := createPendingClaim(ctx, p)
+
+			By("verifying the cached client returns the same Spec and Status")
+			cached := &mayv1alpha1.Claim{}
+			Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(cc), cached)).Should(Succeed())
+			Expect(cached.Spec).Should(BeEquivalentTo(cc.Spec))
+			Expect(cached.Status.Conditions).ShouldNot(BeEmpty())
+			Expect(claim.IsPending(*cached)).Should(BeTrue())
+		})
+	})
 
 	When("claim is Claimed and pod is Succeeded", func() {
 		It("should delete the Claim", func(ctx context.Context) {
@@ -187,8 +252,10 @@ var _ = Describe("ClaimReconciler", func() {
 			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
 
 			By("verifying the Claim has a deletion timestamp")
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
-			Expect(c.DeletionTimestamp.IsZero()).Should(BeFalse())
+			Eventually(func(g Gomega) {
+				g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
+				g.Expect(c.DeletionTimestamp.IsZero()).Should(BeFalse())
+			}).WithTimeout(10 * time.Second).Should(Succeed())
 		})
 	})
 
@@ -202,8 +269,10 @@ var _ = Describe("ClaimReconciler", func() {
 			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
 
 			By("verifying the Claim has a deletion timestamp")
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
-			Expect(c.DeletionTimestamp.IsZero()).Should(BeFalse())
+			Eventually(func(g Gomega) {
+				g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
+				g.Expect(c.DeletionTimestamp.IsZero()).Should(BeFalse())
+			}).WithTimeout(10 * time.Second).Should(Succeed())
 		})
 	})
 
@@ -217,7 +286,7 @@ var _ = Describe("ClaimReconciler", func() {
 			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
 
 			By("verifying the Claim still exists")
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(c), &mayv1alpha1.Claim{})).Should(Succeed())
+			Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), &mayv1alpha1.Claim{})).Should(Succeed())
 		})
 	})
 
@@ -226,13 +295,13 @@ var _ = Describe("ClaimReconciler", func() {
 			By("creating a pod, creating a Claimed claim, then deleting the pod")
 			p := createPod(ctx, "")
 			c := createClaimedClaim(ctx, p)
-			Expect(k8sClient.Delete(ctx, p)).Should(Succeed())
+			Expect(k8sCachedClient.Delete(ctx, p)).Should(Succeed())
 
 			By("reconciling the Claim")
 			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
 
 			By("verifying the Claim still exists")
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(c), &mayv1alpha1.Claim{})).Should(Succeed())
+			Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), &mayv1alpha1.Claim{})).Should(Succeed())
 		})
 	})
 
@@ -247,16 +316,20 @@ var _ = Describe("ClaimReconciler", func() {
 			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
 
 			By("verifying the Claim is now Claimed")
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
-			Expect(claim.IsClaimed(*c)).Should(BeTrue())
+			Eventually(func(g Gomega) {
+				g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
+				g.Expect(claim.IsClaimed(*c)).Should(BeTrue())
+			}).WithTimeout(10 * time.Second).Should(Succeed())
 
 			By("verifying the Runner has InUseBy set to the Claim and flavor matches")
 			r := &mayv1alpha1.Runner{}
-			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: "ready-runner", Namespace: ns.Name}, r)).Should(Succeed())
-			Expect(r.Spec.Flavor).Should(Equal(flavor))
-			Expect(r.Spec.InUseBy).ShouldNot(BeNil())
-			Expect(r.Spec.InUseBy.Name).Should(Equal(claimName))
-			Expect(r.Spec.InUseBy.Namespace).Should(Equal(ns.Name))
+			Eventually(func(g Gomega) {
+				g.Expect(k8sCachedClient.Get(ctx, client.ObjectKey{Name: "ready-runner", Namespace: ns.Name}, r)).Should(Succeed())
+				g.Expect(r.Spec.Flavor).Should(Equal(flavor))
+				g.Expect(r.Spec.InUseBy).ShouldNot(BeNil())
+				g.Expect(r.Spec.InUseBy.Name).Should(Equal(claimName))
+				g.Expect(r.Spec.InUseBy.Namespace).Should(Equal(ns.Name))
+			}).WithTimeout(10 * time.Second).Should(Succeed())
 		})
 	})
 
@@ -270,7 +343,7 @@ var _ = Describe("ClaimReconciler", func() {
 			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
 
 			By("verifying the Claim stays Pending")
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
+			Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
 			Expect(claim.IsPending(*c)).Should(BeTrue())
 		})
 	})
@@ -287,12 +360,12 @@ var _ = Describe("ClaimReconciler", func() {
 			Expect(err).Should(HaveOccurred())
 
 			By("verifying the Claim stays Pending")
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
+			Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
 			Expect(claim.IsPending(*c)).Should(BeTrue())
 
 			By("verifying the Runner was not reserved")
 			r := &mayv1alpha1.Runner{}
-			Expect(k8sClient.Get(ctx, client.ObjectKey{Name: "wrong-flavor-runner", Namespace: ns.Name}, r)).Should(Succeed())
+			Expect(k8sCachedClient.Get(ctx, client.ObjectKey{Name: "wrong-flavor-runner", Namespace: ns.Name}, r)).Should(Succeed())
 			Expect(r.Spec.InUseBy).Should(BeNil())
 			Expect(runner.IsInUseBy(*r, *c)).Should(BeFalse())
 		})
@@ -309,15 +382,15 @@ var _ = Describe("ClaimReconciler", func() {
 			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
 
 			By("verifying the Claim stays Pending")
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
+			Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
 			Expect(claim.IsPending(*c)).Should(BeTrue())
 		})
 	})
 
 	Context("Metrics tests", Serial, func() {
-		It("should increment may_claims_matched when a Claim is matched", func(ctx context.Context) {
+		It("should increment may_claim_matched when a Claim is matched", func(ctx context.Context) {
 			By("recording the metric value before reconciling")
-			before := testutil.ToFloat64(claimsMatched)
+			before := testutil.ToFloat64(claimMatched)
 
 			By("creating a pod, a Ready Runner and a Pending Claim")
 			p := createPod(ctx, "")
@@ -328,12 +401,12 @@ var _ = Describe("ClaimReconciler", func() {
 			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
 
 			By("verifying the metric was incremented by 1")
-			Expect(testutil.ToFloat64(claimsMatched)).Should(Equal(before + 1))
+			Expect(testutil.ToFloat64(claimMatched)).Should(Equal(before + 1))
 		})
 
-		It("should not increment may_claims_matched when no Runner is available", func(ctx context.Context) {
+		It("should not increment may_claim_matched when no Runner is available", func(ctx context.Context) {
 			By("recording the metric value before reconciling")
-			before := testutil.ToFloat64(claimsMatched)
+			before := testutil.ToFloat64(claimMatched)
 
 			By("creating a pod and a Pending Claim without any Runners")
 			p := createPod(ctx, "")
@@ -343,7 +416,8 @@ var _ = Describe("ClaimReconciler", func() {
 			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
 
 			By("verifying the metric was not incremented")
-			Expect(testutil.ToFloat64(claimsMatched)).Should(Equal(before))
+			Expect(testutil.ToFloat64(claimMatched)).Should(Equal(before))
 		})
 	})
+
 })

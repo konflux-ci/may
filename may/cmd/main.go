@@ -230,7 +230,7 @@ func main() {
 	// +kubebuilder:scaffold:builder
 
 	ctx := ctrl.SetupSignalHandler()
-	if err := indexer.SetupFieldIndexers(ctx, mgr, setupLog); err != nil {
+	if err := indexer.SetupFieldIndexers(ctx, mgr.GetFieldIndexer(), setupLog); err != nil {
 		setupLog.Error(err, "unable to setup field indexers")
 		os.Exit(1)
 	}
