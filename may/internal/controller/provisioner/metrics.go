@@ -24,12 +24,21 @@ import (
 var (
 	runnersCreated = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "may",
-		Subsystem: "runner",
-		Name:      "created",
+		Subsystem: "host",
+		Name:      "runners_created",
 		Help:      "Total number of runners created during host reconciliation",
+	})
+	runnersDeleted = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "may",
+		Subsystem: "host",
+		Name:      "runners_deleted",
+		Help:      "Total number of runners deleted during host reconciliation",
 	})
 )
 
 func init() {
-	metrics.Registry.MustRegister(runnersCreated)
+	metrics.Registry.MustRegister(
+		runnersCreated,
+		runnersDeleted,
+	)
 }
