@@ -45,6 +45,10 @@ func SetupPodWebhookWithManager(mgr ctrl.Manager) error {
 
 // TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
+// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=dynamichostautoscalers,verbs=list
+// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts,verbs=list
+// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=flavors,verbs=get
+
 // +kubebuilder:webhook:path=/mutate--v1-pod,mutating=true,failurePolicy=fail,sideEffects=None,groups="",resources=pods,verbs=create,versions=v1,name=mpod-v1.kb.io,admissionReviewVersions=v1
 
 // PodCustomDefaulter struct is responsible for setting default values on the custom resource of the

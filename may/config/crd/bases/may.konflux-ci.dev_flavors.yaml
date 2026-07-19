@@ -12,7 +12,7 @@ spec:
     listKind: FlavorList
     plural: flavors
     singular: flavor
-  scope: Namespaced
+  scope: Cluster
   versions:
   - additionalPrinterColumns:
     - description: Local

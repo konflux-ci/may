@@ -49,9 +49,17 @@ func PodWebhookContexts() {
 				"konflux-ci.dev/type=tenant")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
+
+			By("creating a DynamicHostAutoscaler so the webhook recognizes the flavor as known")
+			applySpecification(dynamicHostAutoscalerYAML(
+				"e2e-webhook-autoscaler", namespace, "aws-linux-arm64", "aws-linux-arm64", "e2e-webhook-root-key",
+			))
 		})
 
 		AfterAll(func() {
+			By("deleting DynamicHostAutoscaler for webhook tests")
+			deleteDynamicHostAutoscaler(namespace, "e2e-webhook-autoscaler")
+
 			By("deleting Pod webhook test namespace")
 			cmd := exec.Command("kubectl", "delete", "namespace", webhookTestNamespace, "--ignore-not-found", "--wait=false")
 			_, _ = utils.Run(cmd)

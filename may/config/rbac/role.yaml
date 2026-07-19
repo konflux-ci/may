@@ -91,6 +91,12 @@ rules:
 - apiGroups:
   - may.konflux-ci.dev
   resources:
+  - flavors
+  verbs:
+  - get
+- apiGroups:
+  - may.konflux-ci.dev
+  resources:
   - runners
   - statichosts
   verbs:

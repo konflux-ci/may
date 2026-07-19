@@ -29,6 +29,7 @@ type FlavorSpec struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Cluster
 // +kubebuilder:printcolumn:name="Local",type="boolean",JSONPath=`.spec.local`,description="Local"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
