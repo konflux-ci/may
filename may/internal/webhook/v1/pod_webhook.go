@@ -20,10 +20,13 @@ import (
 	"context"
 	"slices"
 
+	"github.com/konflux-ci/may/api/v1alpha1"
 	"github.com/konflux-ci/may/pkg/constants"
 	"github.com/konflux-ci/may/pkg/pod"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -34,11 +37,17 @@ var podlog = logf.Log.WithName("pod-resource")
 // SetupPodWebhookWithManager registers the webhook for Pod in the manager.
 func SetupPodWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &corev1.Pod{}).
-		WithDefaulter(&PodCustomDefaulter{}).
+		WithDefaulter(&PodCustomDefaulter{
+			reader: mgr.GetClient(),
+		}).
 		Complete()
 }
 
 // TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+
+// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=dynamichostautoscalers,verbs=list
+// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts,verbs=list
+// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=flavors,verbs=get
 
 // +kubebuilder:webhook:path=/mutate--v1-pod,mutating=true,failurePolicy=fail,sideEffects=None,groups="",resources=pods,verbs=create,versions=v1,name=mpod-v1.kb.io,admissionReviewVersions=v1
 
@@ -48,14 +57,15 @@ func SetupPodWebhookWithManager(mgr ctrl.Manager) error {
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as it is used only for temporary operations and does not need to be deeply copied.
 type PodCustomDefaulter struct {
-	// TODO(user): Add more fields as needed for defaulting
+	reader client.Reader
 }
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Pod.
-func (d *PodCustomDefaulter) Default(_ context.Context, p *corev1.Pod) error {
+func (d *PodCustomDefaulter) Default(ctx context.Context, p *corev1.Pod) error {
 	podlog.Info("Defaulting for Pod", "name", p.GetName())
 
-	if !pod.HasFlavor(p.Annotations) {
+	flavor, hasFlavor := pod.ExtractFlavor(p.Annotations)
+	if !hasFlavor {
 		return nil
 	}
 
@@ -63,10 +73,62 @@ func (d *PodCustomDefaulter) Default(_ context.Context, p *corev1.Pod) error {
 	// introducing the concepts of tenant or taskruns.
 	// As an example, we can use the webhook's NamespaceSelector field.
 
+	// --- Option 1: Static exclusion list ---
+	if pod.IsLocalFlavor(flavor) {
+		podlog.Info("skipping local flavor (option 1: static list)", "flavor", flavor)
+		return nil
+	}
+
+	// --- Option 2: Absence-of-backend detection ---
+	isKnown, err := d.isKnownFlavor(ctx, flavor)
+	if err != nil {
+		return err
+	}
+	if !isKnown {
+		podlog.Info("skipping flavor with no backend (option 2: absence-of-backend)", "flavor", flavor)
+		return nil
+	}
+
+	// --- Option 3: Flavor CRD with spec.local ---
+	isLocal, err := d.isLocalFlavorCR(ctx, flavor)
+	if err != nil {
+		return err
+	}
+	if isLocal {
+		podlog.Info("skipping local flavor (option 3: Flavor CR)", "flavor", flavor)
+		return nil
+	}
+
 	g := corev1.PodSchedulingGate{Name: constants.MayPodSchedulingGate}
 	if !slices.Contains(p.Spec.SchedulingGates, g) {
 		p.Spec.SchedulingGates = append(p.Spec.SchedulingGates, g)
 		podsGated.Inc()
 	}
 	return nil
+}
+
+// --- Option 2: checks if any DynamicHostAutoscaler or StaticHost exists for the flavor ---
+func (d *PodCustomDefaulter) isKnownFlavor(ctx context.Context, flavor string) (bool, error) {
+	var autoscalers v1alpha1.DynamicHostAutoscalerList
+	if err := d.reader.List(ctx, &autoscalers); err != nil {
+		return false, err
+	}
+	var staticHosts v1alpha1.StaticHostList
+	if err := d.reader.List(ctx, &staticHosts); err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(autoscalers.Items, func(a v1alpha1.DynamicHostAutoscaler) bool {
+		return a.Spec.Flavor == flavor
+	}) || slices.ContainsFunc(staticHosts.Items, func(h v1alpha1.StaticHost) bool {
+		return h.Spec.Flavor == flavor
+	}), nil
+}
+
+// --- Option 3: checks the Flavor CR for spec.local ---
+func (d *PodCustomDefaulter) isLocalFlavorCR(ctx context.Context, flavor string) (bool, error) {
+	var f v1alpha1.Flavor
+	if err := d.reader.Get(ctx, types.NamespacedName{Name: flavor}, &f); err != nil {
+		return false, client.IgnoreNotFound(err)
+	}
+	return f.Spec.Local, nil
 }

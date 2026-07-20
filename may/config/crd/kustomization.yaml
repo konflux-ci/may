@@ -8,6 +8,7 @@ resources:
   - bases/may.konflux-ci.dev_dynamichosts.yaml
   - bases/may.konflux-ci.dev_runners.yaml
   - bases/may.konflux-ci.dev_claims.yaml
+  - bases/may.konflux-ci.dev_flavors.yaml
   # +kubebuilder:scaffold:crdkustomizeresource
 patches: []
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix.

@@ -23,10 +23,15 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
+	"github.com/konflux-ci/may/api/v1alpha1"
 	"github.com/konflux-ci/may/pkg/constants"
 	"github.com/konflux-ci/may/pkg/pod"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func newPod(name string, annotations map[string]string) *corev1.Pod {
@@ -38,15 +43,46 @@ func newPod(name string, annotations map[string]string) *corev1.Pod {
 	}
 }
 
+func newScheme() *runtime.Scheme {
+	s := runtime.NewScheme()
+	utilruntime.Must(clientgoscheme.AddToScheme(s))
+	utilruntime.Must(v1alpha1.AddToScheme(s))
+	return s
+}
+
+func newDHA(name, flavor string) *v1alpha1.DynamicHostAutoscaler {
+	return &v1alpha1.DynamicHostAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: v1alpha1.DynamicHostAutoscalerSpec{
+			Flavor:   flavor,
+			Template: v1alpha1.DynamicHostTemplate{Spec: v1alpha1.DynamicHostSpec{}},
+		},
+	}
+}
+
+func defaulterWithObjects(objs ...runtime.Object) PodCustomDefaulter {
+	return PodCustomDefaulter{
+		reader: fake.NewClientBuilder().
+			WithScheme(newScheme()).
+			WithRuntimeObjects(objs...).
+			Build(),
+	}
+}
+
 var _ = Describe("Pod Webhook", func() {
 	var defaulter PodCustomDefaulter
 
 	BeforeEach(func() {
-		defaulter = PodCustomDefaulter{}
+		defaulter = PodCustomDefaulter{
+			reader: fake.NewClientBuilder().WithScheme(newScheme()).Build(),
+		}
 	})
 
 	When("pod has a flavor annotation", func() {
 		It("should gate the pod", func(ctx context.Context) {
+			By("setting up a backend so option 2 doesn't skip gating")
+			defaulter = defaulterWithObjects(newDHA("amd64-autoscaler", "amd64"))
+
 			By("defaulting a pod with a flavor annotation")
 			p := newPod("test-pod", map[string]string{pod.KueueFlavorLabelPrefix + "amd64": ""})
 			Expect(defaulter.Default(ctx, p)).Should(Succeed())
@@ -60,6 +96,9 @@ var _ = Describe("Pod Webhook", func() {
 
 	When("pod already has the scheduling gate", func() {
 		It("should not add a duplicate gate", func(ctx context.Context) {
+			By("setting up a backend")
+			defaulter = defaulterWithObjects(newDHA("amd64-autoscaler", "amd64"))
+
 			By("defaulting a pod that already has the scheduling gate")
 			p := newPod("already-gated-pod", map[string]string{pod.KueueFlavorLabelPrefix + "amd64": ""})
 			p.Spec.SchedulingGates = []corev1.PodSchedulingGate{
@@ -87,9 +126,144 @@ var _ = Describe("Pod Webhook", func() {
 			nil),
 	)
 
+	// --- Option 1: Static exclusion list ---
+	When("flavor is a well-known local flavor", func() {
+		DescribeTable("should skip gating",
+			func(ctx SpecContext, flavor string) {
+				By("defaulting a pod with a local flavor")
+				p := newPod("local-pod", map[string]string{pod.KueueFlavorLabelPrefix + flavor: ""})
+				Expect(defaulter.Default(ctx, p)).Should(Succeed())
+
+				By("verifying no scheduling gate was added")
+				Expect(p.Spec.SchedulingGates).Should(BeEmpty())
+			},
+			Entry("localhost", "localhost"),
+			Entry("local", "local"),
+		)
+	})
+
+	// --- Option 2: Absence-of-backend detection ---
+	When("no DynamicHostAutoscaler or StaticHost exists for the flavor", func() {
+		It("should skip gating", func(ctx SpecContext) {
+			By("defaulting a pod with an unknown flavor")
+			p := newPod("no-backend-pod", map[string]string{pod.KueueFlavorLabelPrefix + "unknown-flavor": ""})
+			Expect(defaulter.Default(ctx, p)).Should(Succeed())
+
+			By("verifying no scheduling gate was added")
+			Expect(p.Spec.SchedulingGates).Should(BeEmpty())
+		})
+	})
+
+	When("a DynamicHostAutoscaler exists for the flavor", func() {
+		It("should gate the pod", func(ctx SpecContext) {
+			By("setting up a DynamicHostAutoscaler")
+			defaulter = defaulterWithObjects(newDHA("aws-amd64", "aws-linux-amd64"))
+
+			By("defaulting the pod")
+			p := newPod("remote-pod", map[string]string{pod.KueueFlavorLabelPrefix + "aws-linux-amd64": ""})
+			Expect(defaulter.Default(ctx, p)).Should(Succeed())
+
+			By("verifying the scheduling gate was added")
+			Expect(p.Spec.SchedulingGates).Should(ContainElement(
+				corev1.PodSchedulingGate{Name: constants.MayPodSchedulingGate},
+			))
+		})
+	})
+
+	When("a StaticHost exists for the flavor", func() {
+		It("should gate the pod", func(ctx SpecContext) {
+			By("setting up a StaticHost")
+			defaulter = defaulterWithObjects(&v1alpha1.StaticHost{
+				ObjectMeta: metav1.ObjectMeta{Name: "static-arm64"},
+				Spec: v1alpha1.StaticHostSpec{
+					HostCoreSpec: v1alpha1.HostCoreSpec{
+						Flavor:  "static-linux-arm64",
+						Status:  v1alpha1.HostStatusReady,
+						RootKey: corev1.LocalObjectReference{Name: "key"},
+					},
+					Runners: v1alpha1.HostSpecRunners{
+						Instances: 1,
+						Resources: corev1.ResourceList{},
+					},
+				},
+			})
+
+			By("defaulting the pod")
+			p := newPod("static-pod", map[string]string{pod.KueueFlavorLabelPrefix + "static-linux-arm64": ""})
+			Expect(defaulter.Default(ctx, p)).Should(Succeed())
+
+			By("verifying the scheduling gate was added")
+			Expect(p.Spec.SchedulingGates).Should(ContainElement(
+				corev1.PodSchedulingGate{Name: constants.MayPodSchedulingGate},
+			))
+		})
+	})
+
+	// --- Option 3: Flavor CRD with spec.local ---
+	When("a Flavor CR with spec.local=true exists for the flavor", func() {
+		It("should skip gating", func(ctx SpecContext) {
+			By("setting up a backend and a Flavor CR with local=true")
+			defaulter = defaulterWithObjects(
+				newDHA("aws-amd64", "aws-linux-amd64"),
+				&v1alpha1.Flavor{
+					ObjectMeta: metav1.ObjectMeta{Name: "aws-linux-amd64"},
+					Spec:       v1alpha1.FlavorSpec{Local: true},
+				},
+			)
+
+			By("defaulting the pod")
+			p := newPod("local-cr-pod", map[string]string{pod.KueueFlavorLabelPrefix + "aws-linux-amd64": ""})
+			Expect(defaulter.Default(ctx, p)).Should(Succeed())
+
+			By("verifying no scheduling gate was added")
+			Expect(p.Spec.SchedulingGates).Should(BeEmpty())
+		})
+	})
+
+	When("a Flavor CR with spec.local=false exists for the flavor", func() {
+		It("should gate the pod", func(ctx SpecContext) {
+			By("setting up a backend and a Flavor CR with local=false")
+			defaulter = defaulterWithObjects(
+				newDHA("aws-amd64", "aws-linux-amd64"),
+				&v1alpha1.Flavor{
+					ObjectMeta: metav1.ObjectMeta{Name: "aws-linux-amd64"},
+					Spec:       v1alpha1.FlavorSpec{Local: false},
+				},
+			)
+
+			By("defaulting the pod")
+			p := newPod("remote-cr-pod", map[string]string{pod.KueueFlavorLabelPrefix + "aws-linux-amd64": ""})
+			Expect(defaulter.Default(ctx, p)).Should(Succeed())
+
+			By("verifying the scheduling gate was added")
+			Expect(p.Spec.SchedulingGates).Should(ContainElement(
+				corev1.PodSchedulingGate{Name: constants.MayPodSchedulingGate},
+			))
+		})
+	})
+
+	When("no Flavor CR exists for the flavor", func() {
+		It("should gate the pod (fail-safe: absence of CR means remote)", func(ctx SpecContext) {
+			By("setting up a backend but no Flavor CR")
+			defaulter = defaulterWithObjects(newDHA("aws-amd64", "aws-linux-amd64"))
+
+			By("defaulting the pod")
+			p := newPod("no-cr-pod", map[string]string{pod.KueueFlavorLabelPrefix + "aws-linux-amd64": ""})
+			Expect(defaulter.Default(ctx, p)).Should(Succeed())
+
+			By("verifying the scheduling gate was added")
+			Expect(p.Spec.SchedulingGates).Should(ContainElement(
+				corev1.PodSchedulingGate{Name: constants.MayPodSchedulingGate},
+			))
+		})
+	})
+
 	// Serialize metric tests to keep counters consistent
 	Context("Metrics tests", Serial, func() {
 		It("should increment the metric when a pod is gated", func(ctx context.Context) {
+			By("setting up a backend")
+			defaulter = defaulterWithObjects(newDHA("amd64-autoscaler", "amd64"))
+
 			By("recording the metric value before defaulting")
 			before := testutil.ToFloat64(podsGated)
 			Expect(defaulter.Default(ctx, newPod("test-pod", map[string]string{pod.KueueFlavorLabelPrefix + "amd64": ""}))).Should(Succeed())
@@ -99,6 +273,9 @@ var _ = Describe("Pod Webhook", func() {
 		})
 
 		It("should not increment the metric when the pod already has the gate", func(ctx context.Context) {
+			By("setting up a backend")
+			defaulter = defaulterWithObjects(newDHA("amd64-autoscaler", "amd64"))
+
 			By("recording the metric value before defaulting")
 			before := testutil.ToFloat64(podsGated)
 			p := newPod("already-gated-pod", map[string]string{pod.KueueFlavorLabelPrefix + "amd64": ""})
