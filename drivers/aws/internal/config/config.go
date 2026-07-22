@@ -100,8 +100,9 @@ type AWSConfiguration struct {
 	// for the instance's EBS volume(s).
 	Iops *int32
 
-	// UserData is the base64-encoded cloud-init or shell script passed to the
-	// instance at launch.
+	// UserData is the raw cloud-init or shell script content for the instance
+	// at launch. The annotation value is stored as-is; base64 encoding for the
+	// EC2 RunInstances API happens when the request is built.
 	UserData *string
 
 	// Tenancy specifies the tenancy of the instance. Valid values are "default",
@@ -185,6 +186,7 @@ func configurationFromAnnotations(annotations map[string]string, l logr.Logger) 
 	}
 
 	if v, ok := annotations[AnnotationUserData]; ok {
+		// Raw script/cloud-init content; base64 encoding is deferred to EC2 API call time.
 		cfg.UserData = &v
 	}
 
@@ -192,7 +194,7 @@ func configurationFromAnnotations(annotations map[string]string, l logr.Logger) 
 }
 
 // parseInt32 parses a string as a base-10 int32. Returns 0 if the string is
-// empty or cannot be parsed.
+// empty, cannot be parsed, or is negative.
 func parseInt32(l logr.Logger, annotation, value string) int32 {
 	if value == "" {
 		return 0
@@ -202,11 +204,15 @@ func parseInt32(l logr.Logger, annotation, value string) int32 {
 		l.Info("ignoring invalid AWS annotation value", "annotation", annotation, "value", value, "error", err.Error())
 		return 0
 	}
+	if v < 0 {
+		l.Info("ignoring invalid AWS annotation value", "annotation", annotation, "value", value, "error", "negative value")
+		return 0
+	}
 	return int32(v)
 }
 
 // parseOptionalInt32 parses an optional int32 annotation. Empty strings return
-// nil. Invalid values are ignored so callers can distinguish them from zero.
+// nil. Invalid or negative values are ignored so callers can distinguish them from zero.
 func parseOptionalInt32(l logr.Logger, annotation, value string) *int32 {
 	if value == "" {
 		return nil
@@ -214,6 +220,10 @@ func parseOptionalInt32(l logr.Logger, annotation, value string) *int32 {
 	v, err := strconv.ParseInt(value, 10, 32)
 	if err != nil {
 		l.Info("ignoring invalid AWS annotation value", "annotation", annotation, "value", value, "error", err.Error())
+		return nil
+	}
+	if v < 0 {
+		l.Info("ignoring invalid AWS annotation value", "annotation", annotation, "value", value, "error", "negative value")
 		return nil
 	}
 	parsed := int32(v)

@@ -55,19 +55,16 @@ var _ = Describe("validateCredentialEnvironment", func() {
 	)
 
 	BeforeEach(func() {
-		originalTokenFile = os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE")
-		originalRoleARN = os.Getenv("AWS_ROLE_ARN")
+		originalTokenFile, originalRoleARN = awsWebIdentityEnv()
 	})
 
 	AfterEach(func() {
-		Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", originalTokenFile)).Should(Succeed())
-		Expect(setEnvOrUnset("AWS_ROLE_ARN", originalRoleARN)).Should(Succeed())
+		restoreAWSWebIdentityEnv(originalTokenFile, originalRoleARN)
 	})
 
 	When("web-identity env vars are unset", func() {
 		It("should allow the SDK default credential chain", func() {
-			Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", "")).Should(Succeed())
-			Expect(setEnvOrUnset("AWS_ROLE_ARN", "")).Should(Succeed())
+			clearAWSWebIdentityEnv()
 
 			Expect(validateCredentialEnvironment()).ShouldNot(HaveOccurred())
 		})
@@ -127,71 +124,101 @@ var _ = Describe("validateCredentialEnvironment", func() {
 	})
 })
 
-var _ = Describe("newEC2Client", func() {
-	When("the region is missing", func() {
-		It("should return a validation error", func() {
-			ec2Client, err := newEC2Client(context.Background(), internalconfig.AWSConfiguration{})
+var _ = Describe("EC2 client construction", func() {
+	var (
+		originalTokenFile string
+		originalRoleARN   string
+	)
 
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring(internalconfig.AnnotationRegion))
-			Expect(ec2Client).Should(BeNil())
-		})
+	BeforeEach(func() {
+		originalTokenFile, originalRoleARN = awsWebIdentityEnv()
+		clearAWSWebIdentityEnv()
 	})
 
-	When("the region is configured", func() {
-		It("should return an EC2 client for that region", func() {
-			ec2Client, err := newEC2Client(context.Background(), internalconfig.AWSConfiguration{
-				Region: "us-east-1",
+	AfterEach(func() {
+		restoreAWSWebIdentityEnv(originalTokenFile, originalRoleARN)
+	})
+
+	var _ = Describe("newEC2Client", func() {
+		When("the region is missing", func() {
+			It("should return a validation error", func() {
+				ec2Client, err := newEC2Client(context.Background(), internalconfig.AWSConfiguration{})
+
+				Expect(err).Should(HaveOccurred())
+				Expect(err.Error()).Should(ContainSubstring(internalconfig.AnnotationRegion))
+				Expect(ec2Client).Should(BeNil())
 			})
+		})
 
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(ec2Client).ShouldNot(BeNil())
-			Expect(ec2Client.Options().Region).Should(Equal("us-east-1"))
+		When("the region is configured", func() {
+			It("should return an EC2 client for that region", func() {
+				ec2Client, err := newEC2Client(context.Background(), internalconfig.AWSConfiguration{
+					Region: "us-east-1",
+				})
+
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(ec2Client).ShouldNot(BeNil())
+				Expect(ec2Client.Options().Region).Should(Equal("us-east-1"))
+			})
 		})
 	})
-})
 
-var _ = Describe("NewStaticEC2Client", func() {
-	When("the StaticHost has a region annotation", func() {
-		It("should return an EC2 client for the configured region", func() {
-			host := &maykonfluxcidevv1alpha1.StaticHost{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "aws-static-host",
-					Annotations: map[string]string{
-						internalconfig.AnnotationRegion: "us-east-1",
+	var _ = Describe("NewStaticEC2Client", func() {
+		When("the StaticHost has a region annotation", func() {
+			It("should return an EC2 client for the configured region", func() {
+				host := &maykonfluxcidevv1alpha1.StaticHost{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "aws-static-host",
+						Annotations: map[string]string{
+							internalconfig.AnnotationRegion: "us-east-1",
+						},
 					},
-				},
-			}
+				}
 
-			ec2Client, err := NewStaticEC2Client(context.Background(), host)
+				ec2Client, err := NewStaticEC2Client(context.Background(), host)
 
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(ec2Client).ShouldNot(BeNil())
-			Expect(ec2Client.Options().Region).Should(Equal("us-east-1"))
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(ec2Client).ShouldNot(BeNil())
+				Expect(ec2Client.Options().Region).Should(Equal("us-east-1"))
+			})
 		})
 	})
-})
 
-var _ = Describe("NewDynamicEC2Client", func() {
-	When("the DynamicHost has a region annotation", func() {
-		It("should return an EC2 client for the configured region", func() {
-			host := &maykonfluxcidevv1alpha1.DynamicHost{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "aws-dynamic-host",
-					Annotations: map[string]string{
-						internalconfig.AnnotationRegion: "eu-west-1",
+	var _ = Describe("NewDynamicEC2Client", func() {
+		When("the DynamicHost has a region annotation", func() {
+			It("should return an EC2 client for the configured region", func() {
+				host := &maykonfluxcidevv1alpha1.DynamicHost{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "aws-dynamic-host",
+						Annotations: map[string]string{
+							internalconfig.AnnotationRegion: "eu-west-1",
+						},
 					},
-				},
-			}
+				}
 
-			ec2Client, err := NewDynamicEC2Client(context.Background(), host)
+				ec2Client, err := NewDynamicEC2Client(context.Background(), host)
 
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(ec2Client).ShouldNot(BeNil())
-			Expect(ec2Client.Options().Region).Should(Equal("eu-west-1"))
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(ec2Client).ShouldNot(BeNil())
+				Expect(ec2Client.Options().Region).Should(Equal("eu-west-1"))
+			})
 		})
 	})
 })
+
+func awsWebIdentityEnv() (tokenFile, roleARN string) {
+	return os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE"), os.Getenv("AWS_ROLE_ARN")
+}
+
+func clearAWSWebIdentityEnv() {
+	Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", "")).Should(Succeed())
+	Expect(setEnvOrUnset("AWS_ROLE_ARN", "")).Should(Succeed())
+}
+
+func restoreAWSWebIdentityEnv(tokenFile, roleARN string) {
+	Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFile)).Should(Succeed())
+	Expect(setEnvOrUnset("AWS_ROLE_ARN", roleARN)).Should(Succeed())
+}
 
 func setEnvOrUnset(key, value string) error {
 	if value == "" {

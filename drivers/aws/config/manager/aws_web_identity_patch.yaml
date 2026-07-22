@@ -3,8 +3,10 @@
 # Prerequisites (cluster admin / platform team):
 #   1. Register the OpenShift service-account OIDC issuer with AWS IAM.
 #   2. Create an IAM role with an AssumeRoleWithWebIdentity trust policy whose
-#      "sub" condition matches:
-#        system:serviceaccount:<controller-namespace>:controller-manager
+#      "sub" condition matches the rendered ServiceAccount subject, e.g. for
+#      config/default:
+#        system:serviceaccount:driver-aws-system:driver-aws-controller-manager
+#      Derive the subject from kubectl kustomize on the overlay you deploy.
 #   3. Attach an IAM policy that grants only the EC2 API actions required by
 #      this driver.
 #

@@ -60,7 +60,7 @@ func NewDynamicEC2Client(ctx context.Context, dynamicHost *maykonfluxcidevv1alph
 // provider, and STS issues short-lived credentials for the EC2 API only.
 //
 // Runtime flow:
-//  1. The controller pod runs as the controller-manager ServiceAccount.
+//  1. The controller pod runs as the deployed controller ServiceAccount.
 //  2. The Deployment projects a ServiceAccount token with audience
 //     sts.amazonaws.com into the pod (see config/manager/aws_web_identity_patch.yaml).
 //  3. AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE tell the SDK to call STS
@@ -73,12 +73,13 @@ func NewDynamicEC2Client(ctx context.Context, dynamicHost *maykonfluxcidevv1alph
 //	AWS:
 //	 - Register an IAM OIDC identity provider for the OpenShift service-account
 //	   issuer URL (the API server --service-account-issuer value).
-//	 - Create an IAM role with AssumeRoleWithWebIdentity trust, scoped to
-//	   subject system:serviceaccount:<controller-namespace>:controller-manager.
+//	 - Create an IAM role with AssumeRoleWithWebIdentity trust, scoped to the
+//	   rendered ServiceAccount subject (system:serviceaccount:<namespace>:<name>).
+//	   See AGENTS.md; config/default renders driver-aws-system/driver-aws-controller-manager.
 //	 - Attach a least-privilege IAM policy for the EC2 actions this driver needs.
 //
 //	OpenShift:
-//	 - Deploy the controller with the controller-manager ServiceAccount.
+//	 - Deploy the controller with the ServiceAccount from your kustomize overlay.
 //	 - Enable the aws_web_identity_patch.yaml overlay and set AWS_ROLE_ARN for
 //	   the target environment.
 //

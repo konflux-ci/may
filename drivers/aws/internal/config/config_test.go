@@ -34,7 +34,7 @@ var _ = Describe("parseInt32", func() {
 		Entry("an empty string", "", int32(0)),
 		Entry("a valid integer", "40", int32(40)),
 		Entry("a non-numeric value", "not-a-number", int32(0)),
-		Entry("a negative integer", "-1", int32(-1)),
+		Entry("a negative integer", "-1", int32(0)),
 		Entry("a value outside int32 range", "2147483648", int32(0)),
 	)
 })
@@ -47,6 +47,7 @@ var _ = Describe("parseOptionalInt32", func() {
 		Entry("an empty string", "", nil),
 		Entry("a valid integer", "125", int32Ptr(125)),
 		Entry("a non-numeric value", "not-a-number", nil),
+		Entry("a negative integer", "-1", nil),
 	)
 })
 
@@ -67,7 +68,8 @@ var _ = Describe("configurationFromAnnotations", func() {
 	var (
 		throughput int32 = 125
 		iops       int32 = 3000
-		userData         = "#!/bin/bash\necho hello"
+		// Raw user-data script; base64 encoding is not applied during parsing.
+		userData = "#!/bin/bash\necho hello"
 	)
 
 	When("annotations are nil", func() {

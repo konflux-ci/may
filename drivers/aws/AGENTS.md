@@ -39,7 +39,7 @@ environment.
 
 ### How it works
 
-1. The controller runs as the `controller-manager` ServiceAccount.
+1. The controller runs as the deployed controller ServiceAccount (see below).
 2. A projected ServiceAccount token (audience `sts.amazonaws.com`) is mounted
    into the pod.
 3. `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` point the SDK at that token
@@ -51,16 +51,45 @@ This is web-identity federation (the same STS API EKS IRSA uses), but OpenShift
 is not EKS: nothing injects credentials automatically. The platform team wires
 the OIDC trust in AWS and the token projection in the Deployment.
 
+### IAM trust subject
+
+AWS IAM must trust the **rendered** ServiceAccount identity from the manifests
+you deploy, not the base scaffold names in `config/rbac/service_account.yaml`.
+
+Subject format:
+
+```text
+system:serviceaccount:<namespace>:<serviceaccount-name>
+```
+
+Derive `<namespace>` and `<serviceaccount-name>` from your kustomize output:
+
+```sh
+kubectl kustomize config/default
+```
+
+With the stock `config/default` overlay (`namespace: driver-aws-system`,
+`namePrefix: driver-aws-`), the subject is:
+
+```text
+system:serviceaccount:driver-aws-system:driver-aws-controller-manager
+```
+
+Custom overlays change `namespace`, `namePrefix`, or both. Always re-run
+`kubectl kustomize` on the overlay you deploy and use the resulting
+ServiceAccount name and namespace in the IAM role trust policy.
+
 ### AWS setup
 
 1. Register the OpenShift service-account OIDC issuer as an IAM OIDC provider.
-2. Create an IAM role with `AssumeRoleWithWebIdentity` trust, conditioned on:
-   `system:serviceaccount:<controller-namespace>:controller-manager`
+2. Create an IAM role with `AssumeRoleWithWebIdentity` trust, conditioned on the
+   rendered subject from the previous section.
 3. Attach a least-privilege policy for the EC2 actions the driver needs.
 
 ### OpenShift setup
 
-1. Deploy with the `controller-manager` ServiceAccount (see `config/rbac/service_account.yaml`).
+1. Deploy the controller with the ServiceAccount from your kustomize overlay
+   (base scaffold: `config/rbac/service_account.yaml`).
 2. Enable `config/manager/aws_web_identity_patch.yaml` in the manager kustomization.
 3. Set `AWS_ROLE_ARN` in that patch to the IAM role ARN for the environment.
 
