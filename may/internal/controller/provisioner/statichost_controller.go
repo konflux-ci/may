@@ -109,9 +109,7 @@ func (r *StaticHostReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, r.ensureHostIsReady(ctx, h)
 
 	case maykonfluxcidevv1alpha1.HostActualStateDraining:
-		// TODO(@konflux-ci): if not already claimed, then delete the runners;
-		// if running, then wait for the runners to be deleted
-		panic("not implemented")
+		return ctrl.Result{}, r.ensureHostIsDraining(ctx, h, rr)
 
 	case maykonfluxcidevv1alpha1.HostActualStateDrained:
 		// TODO(@konflux-ci): ensure all runners were deleted
@@ -129,6 +127,34 @@ func (r *StaticHostReconciler) ensureHostIsReady(ctx context.Context, h maykonfl
 		r.ensureHostRunnersExists(ctx, &h),
 		r.ensureExtraHostRunnersAreDeleted(ctx, &h),
 	}
+	return errors.Join(errs...)
+}
+
+func (r *StaticHostReconciler) ensureHostIsDraining(
+	ctx context.Context,
+	host maykonfluxcidevv1alpha1.StaticHost,
+	runners maykonfluxcidevv1alpha1.RunnerList,
+) error {
+	l := logf.FromContext(ctx).WithValues("host", client.ObjectKeyFromObject(&host))
+	errs := []error{}
+
+	for _, ru := range runners.Items {
+		if ru.Spec.InUseBy != nil {
+			continue
+		}
+
+		err := r.Delete(ctx, &ru)
+		if kerrors.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			l.Error(err, "failed to delete runner", "runner", client.ObjectKeyFromObject(&ru))
+			errs = append(errs, err)
+			continue
+		}
+		runnersDeleted.Inc()
+	}
+
 	return errors.Join(errs...)
 }
 

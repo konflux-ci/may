@@ -190,6 +190,42 @@ func StaticHostContexts() {
 			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
+		It("deletes runners when moved into draining state", func() {
+			By("moving the static host to draining")
+			applySpecificationWithStatus(staticHostYAML(staticHostName, namespace, statichostFlavor, instances, statichostFlavor, statichostRootKeyName, "Draining"))
+
+			By("waiting for Runners to be deleted by finalizer")
+			for i := range instances {
+				runnerName := fmt.Sprintf("%s-%d", staticHostName, i)
+				Eventually(func(g Gomega) {
+					_, err := getRunnerOrErr(g, namespace, runnerName)
+					g.Expect(err).To(BeKubectlNotFound(), "Runner %s should be deleted", runnerName)
+				}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+			}
+		})
+
+		It("recreates Runners when StaticHost state is Ready", func() {
+			applySpecificationWithStatus(staticHostYAML(staticHostName, namespace, statichostFlavor, instances, statichostFlavor, statichostRootKeyName, "Ready"))
+
+			By("waiting for Runners to be created (one per instance index)")
+			for i := range instances {
+				runnerName := fmt.Sprintf("%s-%d", staticHostName, i)
+				runnerID := fmt.Sprintf("%d", i)
+				Eventually(func(g Gomega) {
+					r := getRunner(g, namespace, runnerName)
+					g.Expect(r.Labels).To(HaveKeyWithValue(constants.HostLabel, staticHostName))
+					g.Expect(r.Labels).To(HaveKeyWithValue(constants.RunnerIdLabel, runnerID))
+					g.Expect(r.Labels).To(HaveKeyWithValue(constants.RunnerTypeLabel, constants.RunnerTypeLabelStatic))
+					g.Expect(r.Spec.Flavor).To(Equal(statichostFlavor))
+					g.Expect(r.Spec.Resources).To(HaveKey(corev1.ResourceName(statichostFlavor)))
+					ownerRef := metav1.GetControllerOf(r)
+					g.Expect(ownerRef).NotTo(BeNil(), "Runner should have an ownerReference to the StaticHost")
+					g.Expect(ownerRef.Kind).To(Equal("StaticHost"))
+					g.Expect(ownerRef.Name).To(Equal(staticHostName))
+				}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+			}
+		})
+
 		It("deletes all Runners and removes finalizer when StaticHost is deleted", func() {
 			By("deleting StaticHost to trigger finalizer")
 			cmd := exec.Command("kubectl", "delete", "statichost", staticHostName, "-n", namespace)
