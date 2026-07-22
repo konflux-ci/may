@@ -87,6 +87,21 @@ var _ = Describe("Pod Webhook", func() {
 			nil),
 	)
 
+	When("flavor is excluded", func() {
+		DescribeTable("should skip gating",
+			func(ctx SpecContext, flavor string) {
+				By("defaulting a pod with an excluded flavor")
+				p := newPod("excluded-pod", map[string]string{pod.KueueFlavorLabelPrefix + flavor: ""})
+				Expect(defaulter.Default(ctx, p)).Should(Succeed())
+
+				By("verifying no scheduling gate was added")
+				Expect(p.Spec.SchedulingGates).Should(BeEmpty())
+			},
+			Entry("localhost", "localhost"),
+			Entry("local", "local"),
+		)
+	})
+
 	// Serialize metric tests to keep counters consistent
 	Context("Metrics tests", Serial, func() {
 		It("should increment the metric when a pod is gated", func(ctx context.Context) {
