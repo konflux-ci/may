@@ -27,7 +27,7 @@ spec:
       volumes:
       - name: aws-iam-token
         projected:
-          defaultMode: 420
+          defaultMode: 0400
           sources:
           - serviceAccountToken:
               path: token

@@ -33,7 +33,10 @@ import (
 // AWS credentials are not read from Kubernetes Secrets or host annotations.
 // See newEC2Client for how credentials are resolved on OpenShift.
 func NewStaticEC2Client(ctx context.Context, staticHost *maykonfluxcidevv1alpha1.StaticHost) (*ec2.Client, error) {
-	cfg := internalconfig.GetStaticAWSConfiguration(ctx, staticHost)
+	cfg, err := internalconfig.GetStaticAWSConfiguration(ctx, staticHost)
+	if err != nil {
+		return nil, err
+	}
 	return newEC2Client(ctx, cfg)
 }
 
@@ -42,7 +45,10 @@ func NewStaticEC2Client(ctx context.Context, staticHost *maykonfluxcidevv1alpha1
 // AWS credentials are not read from Kubernetes Secrets or host annotations.
 // See newEC2Client for how credentials are resolved on OpenShift.
 func NewDynamicEC2Client(ctx context.Context, dynamicHost *maykonfluxcidevv1alpha1.DynamicHost) (*ec2.Client, error) {
-	cfg := internalconfig.GetDynamicAWSConfiguration(ctx, dynamicHost)
+	cfg, err := internalconfig.GetDynamicAWSConfiguration(ctx, dynamicHost)
+	if err != nil {
+		return nil, err
+	}
 	return newEC2Client(ctx, cfg)
 }
 

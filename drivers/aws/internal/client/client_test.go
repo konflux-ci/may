@@ -40,10 +40,8 @@ var _ = Describe("validateAWSConfiguration", func() {
 
 	When("the region annotation is missing", func() {
 		It("should return an error referencing the region annotation", func() {
-			err := validateAWSConfiguration(internalconfig.AWSConfiguration{})
-
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring(internalconfig.AnnotationRegion))
+			Expect(validateAWSConfiguration(internalconfig.AWSConfiguration{})).Error().
+				Should(MatchError(ContainSubstring(internalconfig.AnnotationRegion)))
 		})
 	})
 })
@@ -182,6 +180,26 @@ var _ = Describe("EC2 client construction", func() {
 				Expect(ec2Client.Options().Region).Should(Equal("us-east-1"))
 			})
 		})
+
+		When("the StaticHost has invalid AWS annotations", func() {
+			It("should return a configuration error", func() {
+				host := &maykonfluxcidevv1alpha1.StaticHost{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "aws-static-host",
+						Annotations: map[string]string{
+							internalconfig.AnnotationRegion: "us-east-1",
+							internalconfig.AnnotationDisk:     "not-a-number",
+						},
+					},
+				}
+
+				ec2Client, err := NewStaticEC2Client(context.Background(), host)
+
+				Expect(err).Should(HaveOccurred())
+				Expect(err.Error()).Should(ContainSubstring(internalconfig.AnnotationDisk))
+				Expect(ec2Client).Should(BeNil())
+			})
+		})
 	})
 
 	var _ = Describe("NewDynamicEC2Client", func() {
@@ -211,11 +229,13 @@ func awsWebIdentityEnv() (tokenFile, roleARN string) {
 }
 
 func clearAWSWebIdentityEnv() {
+	GinkgoHelper()
 	Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", "")).Should(Succeed())
 	Expect(setEnvOrUnset("AWS_ROLE_ARN", "")).Should(Succeed())
 }
 
 func restoreAWSWebIdentityEnv(tokenFile, roleARN string) {
+	GinkgoHelper()
 	Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFile)).Should(Succeed())
 	Expect(setEnvOrUnset("AWS_ROLE_ARN", roleARN)).Should(Succeed())
 }

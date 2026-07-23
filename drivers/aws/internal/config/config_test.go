@@ -19,7 +19,6 @@ package config
 import (
 	"context"
 
-	"github.com/go-logr/logr"
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -27,40 +26,77 @@ import (
 )
 
 var _ = Describe("parseInt32", func() {
-	DescribeTable("integer annotation parsing",
+	DescribeTable("valid integer annotation parsing",
 		func(input string, expected int32) {
-			Expect(parseInt32(logr.Discard(), AnnotationDisk, input)).Should(Equal(expected))
+			value, err := parseInt32(AnnotationDisk, input)
+
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(value).Should(Equal(expected))
 		},
-		Entry("an empty string", "", int32(0)),
 		Entry("a valid integer", "40", int32(40)),
-		Entry("a non-numeric value", "not-a-number", int32(0)),
-		Entry("a negative integer", "-1", int32(0)),
-		Entry("a value outside int32 range", "2147483648", int32(0)),
+		Entry("zero", "0", int32(0)),
+	)
+
+	DescribeTable("invalid integer annotation parsing",
+		func(input string) {
+			_, err := parseInt32(AnnotationDisk, input)
+
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring(AnnotationDisk))
+		},
+		Entry("an empty string", ""),
+		Entry("a non-numeric value", "not-a-number"),
+		Entry("a negative integer", "-1"),
+		Entry("a value outside int32 range", "2147483648"),
 	)
 })
 
 var _ = Describe("parseOptionalInt32", func() {
-	DescribeTable("optional integer annotation parsing",
+	DescribeTable("valid optional integer annotation parsing",
 		func(input string, expected *int32) {
-			Expect(parseOptionalInt32(logr.Discard(), AnnotationThroughput, input)).Should(Equal(expected))
+			value, err := parseOptionalInt32(AnnotationThroughput, input)
+
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(value).Should(Equal(expected))
 		},
-		Entry("an empty string", "", nil),
 		Entry("a valid integer", "125", int32Ptr(125)),
-		Entry("a non-numeric value", "not-a-number", nil),
-		Entry("a negative integer", "-1", nil),
+	)
+
+	DescribeTable("invalid optional integer annotation parsing",
+		func(input string) {
+			_, err := parseOptionalInt32(AnnotationThroughput, input)
+
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring(AnnotationThroughput))
+		},
+		Entry("an empty string", ""),
+		Entry("a non-numeric value", "not-a-number"),
+		Entry("a negative integer", "-1"),
 	)
 })
 
 var _ = Describe("parseBool", func() {
-	DescribeTable("boolean annotation parsing",
+	DescribeTable("valid boolean annotation parsing",
 		func(input string, expected bool) {
-			Expect(parseBool(logr.Discard(), AnnotationStrictPublicAddress, input)).Should(Equal(expected))
+			value, err := parseBool(AnnotationStrictPublicAddress, input)
+
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(value).Should(Equal(expected))
 		},
-		Entry("an empty string", "", false),
 		Entry("true", "true", true),
 		Entry("false", "false", false),
-		Entry("an invalid value", "maybe", false),
 		Entry("a numeric true value", "1", true),
+	)
+
+	DescribeTable("invalid boolean annotation parsing",
+		func(input string) {
+			_, err := parseBool(AnnotationStrictPublicAddress, input)
+
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring(AnnotationStrictPublicAddress))
+		},
+		Entry("an empty string", ""),
+		Entry("an invalid value", "maybe"),
 	)
 })
 
@@ -74,19 +110,25 @@ var _ = Describe("configurationFromAnnotations", func() {
 
 	When("annotations are nil", func() {
 		It("should return a zero configuration", func() {
-			Expect(configurationFromAnnotations(nil, logr.Discard())).Should(Equal(AWSConfiguration{}))
+			cfg, err := configurationFromAnnotations(nil)
+
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(cfg).Should(Equal(AWSConfiguration{}))
 		})
 	})
 
 	When("annotations are empty", func() {
 		It("should return a zero configuration", func() {
-			Expect(configurationFromAnnotations(map[string]string{}, logr.Discard())).Should(Equal(AWSConfiguration{}))
+			cfg, err := configurationFromAnnotations(map[string]string{})
+
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(cfg).Should(Equal(AWSConfiguration{}))
 		})
 	})
 
 	When("all AWS annotations are present", func() {
 		It("should map every field", func() {
-			cfg := configurationFromAnnotations(map[string]string{
+			cfg, err := configurationFromAnnotations(map[string]string{
 				AnnotationRegion:                  "us-east-1",
 				AnnotationAmi:                     "ami-0123456789abcdef0",
 				AnnotationInstanceType:            "m6a.4xlarge",
@@ -105,8 +147,9 @@ var _ = Describe("configurationFromAnnotations", func() {
 				AnnotationHostResourceGroupArn:    "arn:aws:resource-groups:us-east-1:123456789012:group/my-group",
 				AnnotationLicenseConfigurationArn: "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-0123456789abcdef0",
 				AnnotationStrictPublicAddress:     "true",
-			}, logr.Discard())
+			})
 
+			Expect(err).ShouldNot(HaveOccurred())
 			Expect(cfg).Should(Equal(AWSConfiguration{
 				Region:                  "us-east-1",
 				Ami:                     "ami-0123456789abcdef0",
@@ -132,10 +175,11 @@ var _ = Describe("configurationFromAnnotations", func() {
 
 	When("optional pointer annotations are absent", func() {
 		It("should leave pointer fields nil", func() {
-			cfg := configurationFromAnnotations(map[string]string{
+			cfg, err := configurationFromAnnotations(map[string]string{
 				AnnotationRegion: "eu-west-1",
-			}, logr.Discard())
+			})
 
+			Expect(err).ShouldNot(HaveOccurred())
 			Expect(cfg).Should(Equal(AWSConfiguration{Region: "eu-west-1"}))
 			Expect(cfg.Throughput).Should(BeNil())
 			Expect(cfg.Iops).Should(BeNil())
@@ -143,49 +187,76 @@ var _ = Describe("configurationFromAnnotations", func() {
 		})
 	})
 
-	When("optional pointer annotations are present but empty", func() {
-		It("should leave numeric pointer fields nil", func() {
-			cfg := configurationFromAnnotations(map[string]string{
-				AnnotationThroughput: "",
-				AnnotationIops:       "",
-				AnnotationUserData:   "",
-			}, logr.Discard())
+	When("throughput or iops annotations are invalid", func() {
+		It("should return an error for invalid throughput", func() {
+			_, err := configurationFromAnnotations(map[string]string{
+				AnnotationThroughput: "not-a-number",
+			})
 
-			Expect(cfg.Throughput).Should(BeNil())
-			Expect(cfg.Iops).Should(BeNil())
-			Expect(cfg.UserData).Should(Equal(strPtr("")))
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring(AnnotationThroughput))
+		})
+
+		It("should return an error for invalid iops", func() {
+			_, err := configurationFromAnnotations(map[string]string{
+				AnnotationIops: "also-invalid",
+			})
+
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring(AnnotationIops))
 		})
 	})
 
-	When("throughput or iops annotations are invalid", func() {
-		It("should leave the pointer fields nil", func() {
-			cfg := configurationFromAnnotations(map[string]string{
-				AnnotationThroughput: "not-a-number",
-				AnnotationIops:       "also-invalid",
-			}, logr.Discard())
+	When("present optional annotations are empty", func() {
+		It("should return an error for empty throughput", func() {
+			_, err := configurationFromAnnotations(map[string]string{
+				AnnotationThroughput: "",
+			})
 
-			Expect(cfg.Throughput).Should(BeNil())
-			Expect(cfg.Iops).Should(BeNil())
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring(AnnotationThroughput))
+		})
+
+		It("should return an error for empty user-data", func() {
+			_, err := configurationFromAnnotations(map[string]string{
+				AnnotationUserData: "",
+			})
+
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring(AnnotationUserData))
 		})
 	})
 
 	When("the disk annotation is invalid", func() {
-		It("should default disk to zero", func() {
-			cfg := configurationFromAnnotations(map[string]string{
+		It("should return an error", func() {
+			_, err := configurationFromAnnotations(map[string]string{
 				AnnotationDisk: "not-a-number",
-			}, logr.Discard())
+			})
 
-			Expect(cfg.Disk).Should(Equal(int32(0)))
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring(AnnotationDisk))
+		})
+	})
+
+	When("the strict-public-address annotation is invalid", func() {
+		It("should return an error", func() {
+			_, err := configurationFromAnnotations(map[string]string{
+				AnnotationStrictPublicAddress: "maybe",
+			})
+
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring(AnnotationStrictPublicAddress))
 		})
 	})
 
 	When("unrelated annotations are present", func() {
 		It("should ignore them", func() {
-			cfg := configurationFromAnnotations(map[string]string{
+			cfg, err := configurationFromAnnotations(map[string]string{
 				AnnotationRegion:            "ap-southeast-2",
 				"may.konflux-ci.dev/driver": "aws",
-			}, logr.Discard())
+			})
 
+			Expect(err).ShouldNot(HaveOccurred())
 			Expect(cfg).Should(Equal(AWSConfiguration{Region: "ap-southeast-2"}))
 		})
 	})
@@ -206,13 +277,32 @@ var _ = Describe("GetStaticAWSConfiguration", func() {
 				},
 			}
 
-			cfg := GetStaticAWSConfiguration(context.Background(), host)
+			cfg, err := GetStaticAWSConfiguration(context.Background(), host)
 
+			Expect(err).ShouldNot(HaveOccurred())
 			Expect(cfg).Should(Equal(AWSConfiguration{
 				Region:       "us-west-2",
 				Ami:          "ami-static",
 				InstanceType: "t4g.medium",
 			}))
+		})
+	})
+
+	When("the StaticHost has invalid AWS annotations", func() {
+		It("should return an error", func() {
+			host := &maykonfluxcidevv1alpha1.StaticHost{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "aws-host-arm64",
+					Annotations: map[string]string{
+						AnnotationDisk: "not-a-number",
+					},
+				},
+			}
+
+			_, err := GetStaticAWSConfiguration(context.Background(), host)
+
+			Expect(err).Should(HaveOccurred())
+			Expect(err.Error()).Should(ContainSubstring(AnnotationDisk))
 		})
 	})
 })
@@ -232,8 +322,9 @@ var _ = Describe("GetDynamicAWSConfiguration", func() {
 				},
 			}
 
-			cfg := GetDynamicAWSConfiguration(context.Background(), host)
+			cfg, err := GetDynamicAWSConfiguration(context.Background(), host)
 
+			Expect(err).ShouldNot(HaveOccurred())
 			Expect(cfg).Should(Equal(AWSConfiguration{
 				Region:       "us-east-1",
 				Ami:          "ami-dynamic",
@@ -244,9 +335,5 @@ var _ = Describe("GetDynamicAWSConfiguration", func() {
 })
 
 func int32Ptr(v int32) *int32 {
-	return &v
-}
-
-func strPtr(v string) *string {
 	return &v
 }
