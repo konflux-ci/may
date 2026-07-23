@@ -40,12 +40,13 @@ import (
 	"github.com/konflux-ci/may/pkg/indexer"
 )
 
+// These tests use Ginkgo (BDD-style Go testing framework). Refer to
+// http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
+
 var (
-	ctx             context.Context
-	cancel          context.CancelFunc
 	testEnv         *envtest.Environment
 	cfg             *rest.Config
-	wg              sync.WaitGroup
+	k8sClient       client.Client
 	k8sClientCache  cache.Cache
 	k8sCachedClient client.Client
 	k8sReader       client.Reader
@@ -54,15 +55,15 @@ var (
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "Scheduler Controller Suite")
+	RunSpecs(t, "Controller Suite")
 }
 
-var _ = BeforeSuite(func() {
+var _ = BeforeSuite(func(ctx context.Context) {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
-	ctx, cancel = context.WithCancel(context.TODO())
+	var err error
 
-	Expect(maykonfluxcidevv1alpha1.AddToScheme(scheme.Scheme)).Should(Succeed())
+	Expect(maykonfluxcidevv1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
@@ -70,18 +71,20 @@ var _ = BeforeSuite(func() {
 		ErrorIfCRDPathMissing: true,
 	}
 
+	// Retrieve the first found binary directory to allow running tests from IDEs
 	if getFirstFoundEnvTestBinaryDir() != "" {
 		testEnv.BinaryAssetsDirectory = getFirstFoundEnvTestBinaryDir()
 	}
 
-	var err error
+	// cfg is defined in this file globally.
 	cfg, err = testEnv.Start()
-	Expect(err).ShouldNot(HaveOccurred())
-	Expect(cfg).ShouldNot(BeNil())
+	Expect(err).NotTo(HaveOccurred())
+	Expect(cfg).NotTo(BeNil())
 
-	// setup direct API Server reader
-	k8sReader, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	// setup direct API Server client
+	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).ShouldNot(HaveOccurred())
+	k8sReader = k8sClient
 
 	// setup cache with field indexers
 	k8sClientCache, err = cache.New(cfg, cache.Options{Scheme: scheme.Scheme})
@@ -98,10 +101,14 @@ var _ = BeforeSuite(func() {
 	Expect(err).ShouldNot(HaveOccurred())
 	Expect(k8sCachedClient).ShouldNot(BeNil())
 
+	// derive a context that outlives BeforeSuite for the cache
+	cacheCtx, cacheCancel := context.WithCancel(context.WithoutCancel(ctx))
+
 	// start in background
+	var wg sync.WaitGroup
 	wg.Go(func() {
 		defer GinkgoRecover()
-		Expect(k8sClientCache.Start(ctx)).Should(Or(
+		Expect(k8sClientCache.Start(cacheCtx)).Should(Or(
 			Succeed(),
 			MatchError(context.Canceled),
 			MatchError(context.DeadlineExceeded),
@@ -112,14 +119,13 @@ var _ = BeforeSuite(func() {
 	Eventually(func(g Gomega) {
 		g.Expect(k8sClientCache.WaitForCacheSync(ctx)).Should(BeTrue())
 	}).WithTimeout(1 * time.Minute).Should(Succeed())
-})
 
-var _ = AfterSuite(func() {
-	By("tearing down the test environment")
-	cancel()
-	wg.Wait()
-	err := testEnv.Stop()
-	Expect(err).ShouldNot(HaveOccurred())
+	DeferCleanup(func() {
+		By("tearing down the test environment")
+		cacheCancel()
+		wg.Wait()
+		Expect(testEnv.Stop()).NotTo(HaveOccurred())
+	})
 })
 
 // getFirstFoundEnvTestBinaryDir locates the first binary in the specified path.

@@ -28,6 +28,14 @@ var claimMatched = prometheus.NewCounter(prometheus.CounterOpts{
 	Help:      "Total number of claims matched to a ready runner",
 })
 
+var runnerDeleted = prometheus.NewCounter(prometheus.CounterOpts{
+	Namespace: "may",
+	Subsystem: "runner",
+	Name:      "deleted",
+	Help:      "Total number of runners deleted during claim finalization",
+})
+
 func init() {
+	metrics.Registry.MustRegister(runnerDeleted)
 	metrics.Registry.MustRegister(claimMatched)
 }
