@@ -199,7 +199,8 @@ func (r *RunnerReconciler) ensureRunnerIsCleaned(ctx context.Context, u maykonfl
 			switch s.Phase {
 			// provisioning failed, let's propagate the error
 			case corev1.PodFailed:
-				if runner.SetNotReadyCleaningFailed(&u, fmt.Sprintf("cleaning hooks's pod '%s' failed with message: %s", s.Pod, s.PodMessage)) {
+				if runner.SetNotReadyCleaningFailed(&u, fmt.Sprintf("cleaning hook's pod '%s' failed with message: %s", s.Pod, s.PodMessage)) {
+					runnerCleaningFailed.Inc()
 					return false, r.Status().Update(ctx, &u)
 				}
 

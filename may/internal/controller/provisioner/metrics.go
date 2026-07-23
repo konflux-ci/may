@@ -28,8 +28,15 @@ var (
 		Name:      "created",
 		Help:      "Total number of runners created during host reconciliation",
 	})
+
+	runnerCleaningFailed = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "may",
+		Subsystem: "runner",
+		Name:      "cleaning_failed",
+		Help:      "Total number of runners whose cleanup hooks failed",
+	})
 )
 
 func init() {
-	metrics.Registry.MustRegister(runnersCreated)
+	metrics.Registry.MustRegister(runnersCreated, runnerCleaningFailed)
 }
