@@ -188,7 +188,7 @@ var _ = Describe("EC2 client construction", func() {
 						Name: "aws-static-host",
 						Annotations: map[string]string{
 							internalconfig.AnnotationRegion: "us-east-1",
-							internalconfig.AnnotationDisk:     "not-a-number",
+							internalconfig.AnnotationDisk:   "not-a-number",
 						},
 					},
 				}
