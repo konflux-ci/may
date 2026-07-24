@@ -1,2 +1,5 @@
 resources:
 - manager.yaml
+# Uncomment after setting AWS_ROLE_ARN in aws_web_identity_patch.yaml:
+# patches:
+# - path: aws_web_identity_patch.yaml
