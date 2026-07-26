@@ -101,6 +101,18 @@ var _ = Describe("Runner Controller", func() {
 		}
 	}
 
+	withCleaningFailedCondition := func(r *maykonfluxcidevv1alpha1.Runner) {
+		r.Status.Conditions = []metav1.Condition{
+			{
+				Type:               runner.ConditionTypeReady,
+				Status:             metav1.ConditionFalse,
+				Reason:             runner.ConditionReasonCleaningFailed,
+				Message:            "cleaning failed",
+				LastTransitionTime: metav1.Now(),
+			},
+		}
+	}
+
 	withCleanupHook := func(r *maykonfluxcidevv1alpha1.Runner) {
 		r.Spec.Hooks = &maykonfluxcidevv1alpha1.RunnerHooks{
 			Cleanup: []maykonfluxcidevv1alpha1.RunnerHookPodTemplateSpec{
@@ -154,6 +166,30 @@ var _ = Describe("Runner Controller", func() {
 			Expect(reconcileRunner(ctx, k8sClient)).Should(Equal(reconcile.Result{}))
 
 			By("verifying the runner is marked CleaningFailed")
+			updated := &maykonfluxcidevv1alpha1.Runner{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, updated)).Should(Succeed())
+			Expect(runner.IsNotReadyWithReason(*updated, runner.ConditionReasonCleaningFailed)).Should(BeTrue())
+
+			By("verifying the finalizer is still present")
+			Expect(updated.Finalizers).Should(ContainElement(RunnerControllerFinalizer))
+		})
+	})
+
+	When("runner is already CleaningFailed", func() {
+		It("should not flap back to Cleaning", func(ctx context.Context) {
+			r := newRunner(withDeletionTimestamp, withCleaningFailedCondition, withCleanupHook,
+				withCleanupHookStatus(corev1.PodFailed, "exit code 1"))
+
+			k8sClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(r).
+				WithStatusSubresource(r).
+				Build()
+
+			By("reconciling the runner")
+			Expect(reconcileRunner(ctx, k8sClient)).Should(Equal(reconcile.Result{}))
+
+			By("verifying the runner stays CleaningFailed")
 			updated := &maykonfluxcidevv1alpha1.Runner{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, updated)).Should(Succeed())
 			Expect(runner.IsNotReadyWithReason(*updated, runner.ConditionReasonCleaningFailed)).Should(BeTrue())
@@ -228,6 +264,27 @@ var _ = Describe("Runner Controller", func() {
 
 				By("verifying the metric was incremented")
 				Expect(testutil.ToFloat64(runnerCleaningFailed)).Should(Equal(oldValue + 1))
+			})
+		})
+
+		When("runner is already CleaningFailed", func() {
+			It("should not falsely increment the cleaning_failed metric", func(ctx context.Context) {
+				r := newRunner(withDeletionTimestamp, withCleaningFailedCondition, withCleanupHook,
+					withCleanupHookStatus(corev1.PodFailed, "exit code 1"))
+
+				k8sClient := fake.NewClientBuilder().
+					WithScheme(scheme).
+					WithObjects(r).
+					WithStatusSubresource(r).
+					Build()
+
+				oldValue := testutil.ToFloat64(runnerCleaningFailed)
+
+				By("reconciling the runner")
+				Expect(reconcileRunner(ctx, k8sClient)).Should(Equal(reconcile.Result{}))
+
+				By("verifying the metric was not incremented")
+				Expect(testutil.ToFloat64(runnerCleaningFailed)).Should(Equal(oldValue))
 			})
 		})
 
