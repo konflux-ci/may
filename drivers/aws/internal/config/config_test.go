@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 var _ = Describe("parseInt32", func() {
@@ -52,15 +53,12 @@ var _ = Describe("parseInt32", func() {
 })
 
 var _ = Describe("parseOptionalInt32", func() {
-	DescribeTable("valid optional integer annotation parsing",
-		func(input string, expected *int32) {
-			value, err := parseOptionalInt32(AnnotationThroughput, input)
+	It("should parse a valid integer", func() {
+		value, err := parseOptionalInt32(AnnotationThroughput, "125")
 
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(value).Should(Equal(expected))
-		},
-		Entry("a valid integer", "125", int32Ptr(125)),
-	)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(value).Should(Equal(ptr.To(int32(125))))
+	})
 
 	DescribeTable("invalid optional integer annotation parsing",
 		func(input string) {
@@ -333,7 +331,3 @@ var _ = Describe("GetDynamicAWSConfiguration", func() {
 		})
 	})
 })
-
-func int32Ptr(v int32) *int32 {
-	return &v
-}

@@ -126,14 +126,14 @@ type AWSConfiguration struct {
 // sourced from the host's annotations.
 func GetStaticAWSConfiguration(ctx context.Context, staticHost *maykonfluxcidevv1alpha1.StaticHost) (AWSConfiguration, error) {
 	l := logf.FromContext(ctx).WithValues("StaticHost", staticHost.Name)
-	l.V(1).Info("building AWS configuration from StaticHost annotations")
+	l.Info("building AWS configuration from StaticHost annotations")
 
 	cfg, err := configurationFromAnnotations(staticHost.GetAnnotations())
 	if err != nil {
 		return AWSConfiguration{}, err
 	}
 
-	l.V(1).Info("AWS configuration resolved",
+	l.Info("AWS configuration resolved",
 		"region", cfg.Region,
 		"ami", cfg.Ami,
 		"instanceType", cfg.InstanceType,
@@ -145,14 +145,14 @@ func GetStaticAWSConfiguration(ctx context.Context, staticHost *maykonfluxcidevv
 // sourced from the host's annotations.
 func GetDynamicAWSConfiguration(ctx context.Context, dynamicHost *maykonfluxcidevv1alpha1.DynamicHost) (AWSConfiguration, error) {
 	l := logf.FromContext(ctx).WithValues("DynamicHost", dynamicHost.Name)
-	l.V(1).Info("building AWS configuration from DynamicHost annotations")
+	l.Info("building AWS configuration from DynamicHost annotations")
 
 	cfg, err := configurationFromAnnotations(dynamicHost.GetAnnotations())
 	if err != nil {
 		return AWSConfiguration{}, err
 	}
 
-	l.V(1).Info("AWS configuration resolved",
+	l.Info("AWS configuration resolved",
 		"region", cfg.Region,
 		"ami", cfg.Ami,
 		"instanceType", cfg.InstanceType,
@@ -185,6 +185,7 @@ func configurationFromAnnotations(annotations map[string]string) (AWSConfigurati
 		LicenseConfigurationArn: annotations[AnnotationLicenseConfigurationArn],
 	}
 
+	// Parsing disk size annotation if found.
 	if v, ok := annotations[AnnotationDisk]; ok {
 		disk, err := parseInt32(AnnotationDisk, v)
 		if err != nil {
@@ -193,6 +194,7 @@ func configurationFromAnnotations(annotations map[string]string) (AWSConfigurati
 		cfg.Disk = disk
 	}
 
+	// Parsing strict public address annotation if found.
 	if v, ok := annotations[AnnotationStrictPublicAddress]; ok {
 		strictPublicAddress, err := parseBool(AnnotationStrictPublicAddress, v)
 		if err != nil {
@@ -201,6 +203,7 @@ func configurationFromAnnotations(annotations map[string]string) (AWSConfigurati
 		cfg.StrictPublicAddress = strictPublicAddress
 	}
 
+	// Parsing throughput annotation if found.
 	if v, ok := annotations[AnnotationThroughput]; ok {
 		throughput, err := parseOptionalInt32(AnnotationThroughput, v)
 		if err != nil {
@@ -209,6 +212,7 @@ func configurationFromAnnotations(annotations map[string]string) (AWSConfigurati
 		cfg.Throughput = throughput
 	}
 
+	// Parsing IOPS annotation if found.
 	if v, ok := annotations[AnnotationIops]; ok {
 		iops, err := parseOptionalInt32(AnnotationIops, v)
 		if err != nil {
@@ -217,46 +221,30 @@ func configurationFromAnnotations(annotations map[string]string) (AWSConfigurati
 		cfg.Iops = iops
 	}
 
+	// Parsing user data annotation if found.
 	if v, ok := annotations[AnnotationUserData]; ok {
 		if v == "" {
 			return AWSConfiguration{}, fmt.Errorf("invalid AWS annotation %q: empty value", AnnotationUserData)
 		}
-		// Raw script/cloud-init content; base64 encoding is deferred to EC2 API call time.
 		cfg.UserData = &v
 	}
 
 	return cfg, nil
 }
 
-// parseInt32 parses a string as a base-10 int32 when the annotation is present.
+// parseInt32 parses a string as a non-negative base-10 int32 when the annotation is present.
 func parseInt32(annotation, value string) (int32, error) {
-	if value == "" {
-		return 0, fmt.Errorf("invalid AWS annotation %q: empty value", annotation)
-	}
-	v, err := strconv.ParseInt(value, 10, 32)
+	v, err := strconv.ParseUint(value, 10, 31)
 	if err != nil {
 		return 0, fmt.Errorf("invalid AWS annotation %q: %w", annotation, err)
-	}
-	if v < 0 {
-		return 0, fmt.Errorf("invalid AWS annotation %q: negative value", annotation)
 	}
 	return int32(v), nil
 }
 
 // parseOptionalInt32 parses an optional int32 annotation when the key is present.
 func parseOptionalInt32(annotation, value string) (*int32, error) {
-	if value == "" {
-		return nil, fmt.Errorf("invalid AWS annotation %q: empty value", annotation)
-	}
-	v, err := strconv.ParseInt(value, 10, 32)
-	if err != nil {
-		return nil, fmt.Errorf("invalid AWS annotation %q: %w", annotation, err)
-	}
-	if v < 0 {
-		return nil, fmt.Errorf("invalid AWS annotation %q: negative value", annotation)
-	}
-	parsed := int32(v)
-	return &parsed, nil
+	parsed, err := parseInt32(annotation, value)
+	return &parsed, err
 }
 
 // parseBool parses a string as a boolean when the annotation is present.

@@ -131,20 +131,20 @@ func validateAWSConfiguration(cfg internalconfig.AWSConfiguration) error {
 	return nil
 }
 
+// validateCredentialEnvironment ensures web-identity env vars are configured
+// consistently: either both AWS_WEB_IDENTITY_TOKEN_FILE and AWS_ROLE_ARN are set
+// and the token file exists, or neither is set.
 func validateCredentialEnvironment() error {
 	tokenFile := os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE")
 	roleARN := os.Getenv("AWS_ROLE_ARN")
 
-	hasTokenFile := tokenFile != ""
-	hasRoleARN := roleARN != ""
-
-	if hasTokenFile != hasRoleARN {
+	if (tokenFile != "") != (roleARN != "") {
 		return fmt.Errorf(
 			"AWS web-identity auth requires both AWS_WEB_IDENTITY_TOKEN_FILE and AWS_ROLE_ARN",
 		)
 	}
 
-	if !hasTokenFile {
+	if tokenFile == "" {
 		return nil
 	}
 

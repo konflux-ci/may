@@ -47,22 +47,10 @@ var _ = Describe("validateAWSConfiguration", func() {
 })
 
 var _ = Describe("validateCredentialEnvironment", func() {
-	var (
-		originalTokenFile string
-		originalRoleARN   string
-	)
-
-	BeforeEach(func() {
-		originalTokenFile, originalRoleARN = awsWebIdentityEnv()
-	})
-
-	AfterEach(func() {
-		restoreAWSWebIdentityEnv(originalTokenFile, originalRoleARN)
-	})
-
 	When("web-identity env vars are unset", func() {
 		It("should allow the SDK default credential chain", func() {
-			clearAWSWebIdentityEnv()
+			GinkgoT().Setenv("AWS_WEB_IDENTITY_TOKEN_FILE", "")
+			GinkgoT().Setenv("AWS_ROLE_ARN", "")
 
 			Expect(validateCredentialEnvironment()).ShouldNot(HaveOccurred())
 		})
@@ -70,8 +58,8 @@ var _ = Describe("validateCredentialEnvironment", func() {
 
 	When("only AWS_WEB_IDENTITY_TOKEN_FILE is set", func() {
 		It("should return an error", func() {
-			Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", "/var/run/secrets/aws/token")).Should(Succeed())
-			Expect(setEnvOrUnset("AWS_ROLE_ARN", "")).Should(Succeed())
+			GinkgoT().Setenv("AWS_WEB_IDENTITY_TOKEN_FILE", "/var/run/secrets/aws/token")
+			GinkgoT().Setenv("AWS_ROLE_ARN", "")
 
 			err := validateCredentialEnvironment()
 
@@ -83,8 +71,8 @@ var _ = Describe("validateCredentialEnvironment", func() {
 
 	When("only AWS_ROLE_ARN is set", func() {
 		It("should return an error", func() {
-			Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", "")).Should(Succeed())
-			Expect(setEnvOrUnset("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/example")).Should(Succeed())
+			GinkgoT().Setenv("AWS_WEB_IDENTITY_TOKEN_FILE", "")
+			GinkgoT().Setenv("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/example")
 
 			err := validateCredentialEnvironment()
 
@@ -96,8 +84,8 @@ var _ = Describe("validateCredentialEnvironment", func() {
 
 	When("web-identity env vars are set but the token file is missing", func() {
 		It("should return an error", func() {
-			Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", "/tmp/missing-aws-web-identity-token")).Should(Succeed())
-			Expect(setEnvOrUnset("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/example")).Should(Succeed())
+			GinkgoT().Setenv("AWS_WEB_IDENTITY_TOKEN_FILE", "/tmp/missing-aws-web-identity-token")
+			GinkgoT().Setenv("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/example")
 
 			err := validateCredentialEnvironment()
 
@@ -114,8 +102,8 @@ var _ = Describe("validateCredentialEnvironment", func() {
 				Expect(os.Remove(tokenFile.Name())).Should(Succeed())
 			})
 
-			Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFile.Name())).Should(Succeed())
-			Expect(setEnvOrUnset("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/example")).Should(Succeed())
+			GinkgoT().Setenv("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFile.Name())
+			GinkgoT().Setenv("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/example")
 
 			Expect(validateCredentialEnvironment()).ShouldNot(HaveOccurred())
 		})
@@ -123,18 +111,9 @@ var _ = Describe("validateCredentialEnvironment", func() {
 })
 
 var _ = Describe("EC2 client construction", func() {
-	var (
-		originalTokenFile string
-		originalRoleARN   string
-	)
-
 	BeforeEach(func() {
-		originalTokenFile, originalRoleARN = awsWebIdentityEnv()
-		clearAWSWebIdentityEnv()
-	})
-
-	AfterEach(func() {
-		restoreAWSWebIdentityEnv(originalTokenFile, originalRoleARN)
+		GinkgoT().Setenv("AWS_WEB_IDENTITY_TOKEN_FILE", "")
+		GinkgoT().Setenv("AWS_ROLE_ARN", "")
 	})
 
 	var _ = Describe("newEC2Client", func() {
@@ -223,26 +202,3 @@ var _ = Describe("EC2 client construction", func() {
 		})
 	})
 })
-
-func awsWebIdentityEnv() (tokenFile, roleARN string) {
-	return os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE"), os.Getenv("AWS_ROLE_ARN")
-}
-
-func clearAWSWebIdentityEnv() {
-	GinkgoHelper()
-	Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", "")).Should(Succeed())
-	Expect(setEnvOrUnset("AWS_ROLE_ARN", "")).Should(Succeed())
-}
-
-func restoreAWSWebIdentityEnv(tokenFile, roleARN string) {
-	GinkgoHelper()
-	Expect(setEnvOrUnset("AWS_WEB_IDENTITY_TOKEN_FILE", tokenFile)).Should(Succeed())
-	Expect(setEnvOrUnset("AWS_ROLE_ARN", roleARN)).Should(Succeed())
-}
-
-func setEnvOrUnset(key, value string) error {
-	if value == "" {
-		return os.Unsetenv(key)
-	}
-	return os.Setenv(key, value)
-}
