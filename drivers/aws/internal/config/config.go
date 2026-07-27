@@ -244,7 +244,10 @@ func parseInt32(annotation, value string) (int32, error) {
 // parseOptionalInt32 parses an optional int32 annotation when the key is present.
 func parseOptionalInt32(annotation, value string) (*int32, error) {
 	parsed, err := parseInt32(annotation, value)
-	return &parsed, err
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }
 
 // parseBool parses a string as a boolean when the annotation is present.

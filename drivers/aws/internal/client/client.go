@@ -58,9 +58,6 @@ func NewDynamicEC2Client(ctx context.Context, dynamicHost *maykonfluxcidevv1alph
 // to aws-sdk-go-v2's LoadDefaultConfig default credential chain. The driver
 // does not read AWS keys from Kubernetes Secrets or host annotations.
 //
-// Deployment model: standalone OpenShift → AWS EC2 API
-//
-// The controller runs on OpenShift (not EKS) and calls the EC2 API in AWS.
 // Credentials are obtained through web-identity federation: OpenShift proves
 // the pod's ServiceAccount identity, AWS IAM trusts that identity via an OIDC
 // provider, and STS issues short-lived credentials for the EC2 API only.
