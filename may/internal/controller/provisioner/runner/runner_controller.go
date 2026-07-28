@@ -111,21 +111,15 @@ func (r *RunnerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	case runner.IsReady(u):
 		// create ClusterQueue
-		// l.Info("ensuring queue exists", "status", u.Status)
-		// if err := r.ensureClusterQueueExists(ctx, u); err != nil {
-		// 	return ctrl.Result{}, err
-		// }
+		l.Info("ensuring queue exists", "status", u.Status)
+		if err := r.ensureClusterQueueExists(ctx, u); err != nil {
+			return ctrl.Result{}, err
+		}
 
 		if runner.IsReserved(u) {
 			l.Info("runner is reserved")
 			// do nothing: RunnerBinder controller will do
 			return ctrl.Result{}, nil
-		}
-
-		// if requested, create the Queue
-		if u.Spec.Queue != nil {
-			l.Info("ensuring queue exists")
-			return ctrl.Result{}, r.ensureClusterQueueExists(ctx, u)
 		}
 
 		// Nothing to do, just wait to be reserved

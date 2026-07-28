@@ -18,18 +18,22 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	kueuev1beta1 "sigs.k8s.io/kueue/apis/kueue/v1beta1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -143,6 +147,46 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 			Expect(k8sClient.Delete(ctx, r)).To(Succeed())
 		})
 
+		Describe("Error Handling", func() {
+			It("returns the error if it can not retrieve the Runner", func(ctx context.Context) {
+				By("Create RunnerReconciler with a failing client")
+				expectedErr := errors.New("get error")
+				reconciler := &RunnerReconciler{
+					Client: interceptor.NewClient(k8sClient, interceptor.Funcs{
+						Get: func(ctx context.Context, client client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+							return expectedErr
+						},
+					}),
+					Scheme: k8sClient.Scheme(),
+				}
+
+				By("Reconciling the created resource")
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(err).To(MatchError(expectedErr))
+			})
+
+			It("returns the error if the update to add the finalizer fails", func(ctx context.Context) {
+				By("Create RunnerReconciler with a failing client")
+				expectedErr := errors.New("update error")
+				reconciler := &RunnerReconciler{
+					Client: interceptor.NewClient(k8sClient, interceptor.Funcs{
+						Update: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+							return expectedErr
+						},
+					}),
+					Scheme: k8sClient.Scheme(),
+				}
+
+				By("Reconciling the created resource")
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(err).To(MatchError(expectedErr))
+			})
+		})
+
 		Describe("Initialization", Serial, Ordered, func() {
 			It("initializes the runner", func(ctx context.Context) {
 				By("Reconciling the created resource")
@@ -153,7 +197,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 
 				r := maykonfluxcidevv1alpha1.Runner{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
-				Expect(r.Finalizers).To(Equal([]string{constants.RunnerControllerFinalizer}))
+				Expect(r.Finalizers).To(ConsistOf(constants.RunnerControllerFinalizer))
 				Expect(r.Status).ToNot(BeNil())
 				Expect(runner.IsInitializing(r)).To(BeTrue())
 			})
@@ -190,7 +234,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 							r.Spec.Hooks.Provisioning[1].Name),
 						Namespace: r.Namespace,
 					}
-					Expect(k8sClient.Get(ctx, pk, &p)).To(MatchError(errors.IsNotFound, "NotFound"))
+					Expect(k8sClient.Get(ctx, pk, &p)).To(MatchError(kerrors.IsNotFound, "NotFound"))
 				}
 			})
 
@@ -259,6 +303,174 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 				By("Checking the Runner is Ready")
 				Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
 				Expect(runner.IsReady(r)).To(BeTrue())
+			})
+
+			When("Runner is Ready", func() {
+				It("returns any error produced when creating the ClusterQueue", func(ctx context.Context) {
+					By("Creating a reconciler with a failing client")
+					expectedErr := errors.New("error creating the ClusterQueue")
+					reconciler := &RunnerReconciler{
+						Client: interceptor.NewClient(k8sClient, interceptor.Funcs{
+							Create: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+								Expect(obj).To(BeAssignableToTypeOf(&kueuev1beta1.ClusterQueue{}))
+								return expectedErr
+							},
+						}),
+						Scheme: k8sClient.Scheme(),
+					}
+
+					By("Reconciling the Runner")
+					_, err := reconciler.Reconcile(ctx, reconcile.Request{
+						NamespacedName: typeNamespacedName,
+					})
+					Expect(err).To(MatchError(expectedErr))
+
+					By("Checking the Runner is Ready")
+					r := maykonfluxcidevv1alpha1.Runner{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+					Expect(runner.IsReady(r)).To(BeTrue())
+
+					By("Checking the ClusterQueue doesn't exists")
+					cq := kueuev1beta1.ClusterQueue{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: r.Name}, &cq)).To(MatchError(kerrors.IsNotFound, "IsNotFound"))
+				})
+
+				It("creates the ClusterQueue", func(ctx context.Context) {
+					By("Reconciling the Runner")
+					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+						NamespacedName: typeNamespacedName,
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					By("Checking the Runner is Ready")
+					r := maykonfluxcidevv1alpha1.Runner{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+					Expect(runner.IsReady(r)).To(BeTrue())
+
+					By("Checking the ClusterQueue exists")
+					cq := kueuev1beta1.ClusterQueue{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: r.Name}, &cq)).To(Succeed())
+					Expect(cq.Spec.StopPolicy).To(And(
+						Not(BeNil()),
+						HaveValue(Equal(kueuev1beta1.None))))
+				})
+
+				It("recreates the ClusterQueue if deleted", func(ctx context.Context) {
+					By("Deleting the ClusterQueue")
+					cq := kueuev1beta1.ClusterQueue{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: typeNamespacedName.Name}, &cq)).To(Succeed())
+					Expect(k8sClient.Delete(ctx, &cq)).To(Succeed())
+
+					By("Reconciling the Runner")
+					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+						NamespacedName: typeNamespacedName,
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					By("Checking the Runner is Ready")
+					r := maykonfluxcidevv1alpha1.Runner{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+					Expect(runner.IsReady(r)).To(BeTrue())
+
+					By("Checking the ClusterQueue exists")
+					cq = kueuev1beta1.ClusterQueue{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: r.Name}, &cq)).To(Succeed())
+					Expect(cq.Spec.StopPolicy).To(And(
+						Not(BeNil()),
+						HaveValue(Equal(kueuev1beta1.None))))
+				})
+			})
+
+			When("Runner is Reserved", func() {
+				It("returns no error", func(ctx context.Context) {
+					By("Reserving the Runner")
+					r := maykonfluxcidevv1alpha1.Runner{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+					Expect(runner.IsReady(r)).To(BeTrue())
+					r.Spec.InUseBy = &maykonfluxcidevv1alpha1.ClaimReference{
+						Name:      "dummy-claim",
+						Namespace: "dummy-namespace",
+					}
+					Expect(k8sClient.Update(ctx, &r)).To(Succeed())
+
+					By("Reconciling the Runner")
+					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+						NamespacedName: typeNamespacedName,
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					By("Checking the Runner is Reserved")
+					r = maykonfluxcidevv1alpha1.Runner{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+					Expect(runner.IsReady(r)).To(BeTrue())
+					Expect(runner.IsReserved(r)).To(BeTrue())
+
+					By("Checking the ClusterQueue exists")
+					cq := kueuev1beta1.ClusterQueue{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: r.Name}, &cq)).To(Succeed())
+					Expect(cq.Spec.StopPolicy).To(And(
+						Not(BeNil()),
+						HaveValue(Equal(kueuev1beta1.None))))
+				})
+
+				It("returns any error produced when creating the ClusterQueue", func(ctx context.Context) {
+					By("Creating a reconciler with a failing client")
+					expectedErr := errors.New("error creating the ClusterQueue")
+					reconciler := &RunnerReconciler{
+						Client: interceptor.NewClient(k8sClient, interceptor.Funcs{
+							Create: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+								Expect(obj).To(BeAssignableToTypeOf(&kueuev1beta1.ClusterQueue{}))
+								return expectedErr
+							},
+						}),
+						Scheme: k8sClient.Scheme(),
+					}
+
+					By("Deleting the ClusterQueue")
+					cq := kueuev1beta1.ClusterQueue{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: typeNamespacedName.Name}, &cq)).To(Succeed())
+					Expect(k8sClient.Delete(ctx, &cq)).To(Succeed())
+
+					By("Reconciling the Runner")
+					_, err := reconciler.Reconcile(ctx, reconcile.Request{
+						NamespacedName: typeNamespacedName,
+					})
+					Expect(err).To(MatchError(expectedErr))
+
+					By("Checking the Runner is Ready")
+					r := maykonfluxcidevv1alpha1.Runner{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+					Expect(runner.IsReady(r)).To(BeTrue())
+
+					By("Checking the ClusterQueue doesn't exists")
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: r.Name}, &cq)).To(MatchError(kerrors.IsNotFound, "IsNotFound"))
+				})
+
+				It("recreates the ClusterQueue if not present", func(ctx context.Context) {
+					By("Deleting the ClusterQueue")
+					cq := kueuev1beta1.ClusterQueue{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: typeNamespacedName.Name}, &cq)).
+						To(MatchError(kerrors.IsNotFound, "IsNotFound"))
+
+					By("Reconciling the Runner")
+					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+						NamespacedName: typeNamespacedName,
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					By("Checking the Runner is Ready")
+					r := maykonfluxcidevv1alpha1.Runner{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+					Expect(runner.IsReady(r)).To(BeTrue())
+
+					By("Checking the ClusterQueue exists")
+					cq = kueuev1beta1.ClusterQueue{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Name: r.Name}, &cq)).To(Succeed())
+					Expect(cq.Spec.StopPolicy).To(And(
+						Not(BeNil()),
+						HaveValue(Equal(kueuev1beta1.None))))
+				})
+
 			})
 		})
 	})
