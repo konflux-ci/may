@@ -63,10 +63,10 @@ var _ = Describe("validateCredentialEnvironment", func() {
 
 			err := validateCredentialEnvironment()
 
-			Expect(err).Should(MatchError(
+			Expect(err).Should(MatchError(And(
 				ContainSubstring("AWS_WEB_IDENTITY_TOKEN_FILE"),
 				ContainSubstring("AWS_ROLE_ARN"),
-			))
+			)))
 		})
 	})
 
@@ -77,10 +77,10 @@ var _ = Describe("validateCredentialEnvironment", func() {
 
 			err := validateCredentialEnvironment()
 
-			Expect(err).Should(MatchError(
+			Expect(err).Should(MatchError(And(
 				ContainSubstring("AWS_WEB_IDENTITY_TOKEN_FILE"),
 				ContainSubstring("AWS_ROLE_ARN"),
-			))
+			)))
 		})
 	})
 
