@@ -187,46 +187,83 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 			})
 		})
 
-		Describe("Initialization", Serial, Ordered, func() {
-			It("initializes the runner", func(ctx context.Context) {
-				By("Reconciling the created resource")
-				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-					NamespacedName: typeNamespacedName,
-				})
-				Expect(err).NotTo(HaveOccurred())
+		Describe("Reconciliation", Serial, Ordered, func() {
+			When("the Runner has no status", func() {
+				It("initializes the runner", func(ctx context.Context) {
+					By("Reconciling the created resource")
+					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+						NamespacedName: typeNamespacedName,
+					})
+					Expect(err).NotTo(HaveOccurred())
 
-				r := maykonfluxcidevv1alpha1.Runner{}
-				Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
-				Expect(r.Finalizers).To(ConsistOf(constants.RunnerControllerFinalizer))
-				Expect(r.Status).ToNot(BeNil())
-				Expect(runner.IsInitializing(r)).To(BeTrue())
+					By("Checking the Runner has a finalizer and its status is set to Initializing")
+					r := maykonfluxcidevv1alpha1.Runner{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+					Expect(r.Finalizers).To(ConsistOf(constants.RunnerControllerFinalizer))
+					Expect(r.Status).ToNot(BeNil())
+					Expect(runner.IsInitializing(r)).To(BeTrue())
+				})
 			})
 
-			It("creates the first provisioning pod", func(ctx context.Context) {
-				By("Reconciling the runner")
-				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-					NamespacedName: typeNamespacedName,
-				})
-				Expect(err).NotTo(HaveOccurred())
+			When("the Runner is Initializing", func() {
+				It("creates the first provisioning pod", func(ctx context.Context) {
+					By("Reconciling the runner")
+					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+						NamespacedName: typeNamespacedName,
+					})
+					Expect(err).NotTo(HaveOccurred())
 
-				By("Checking the first provisioning pod is created")
-				r := maykonfluxcidevv1alpha1.Runner{}
-				Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
-				{
-					p := corev1.Pod{}
-					pk := types.NamespacedName{
-						Name: fmt.Sprintf("p-%s-%s",
-							r.Name,
-							r.Spec.Hooks.Provisioning[0].Name),
-						Namespace: r.Namespace,
+					By("Checking the first provisioning pod is created")
+					r := maykonfluxcidevv1alpha1.Runner{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+					{
+						p := corev1.Pod{}
+						pk := types.NamespacedName{
+							Name: fmt.Sprintf("p-%s-%s",
+								r.Name,
+								r.Spec.Hooks.Provisioning[0].Name),
+							Namespace: r.Namespace,
+						}
+						Expect(k8sClient.Get(ctx, pk, &p)).To(Succeed())
+						Expect(p.Spec).ToNot(Equal(r.Spec.Hooks.Provisioning[0].Template))
+						Expect(controllerutil.HasControllerReference(&p)).To(BeTrue())
 					}
-					Expect(k8sClient.Get(ctx, pk, &p)).To(Succeed())
-					Expect(p.Spec).ToNot(Equal(r.Spec.Hooks.Provisioning[0].Template))
-					Expect(controllerutil.HasControllerReference(&p)).To(BeTrue())
-				}
 
-				By("Checking the second provisioning pod doesn't exist yet")
-				{
+					By("Checking the second provisioning pod doesn't exist yet")
+					{
+						p := corev1.Pod{}
+						pk := types.NamespacedName{
+							Name: fmt.Sprintf("p-%s-%s",
+								r.Name,
+								r.Spec.Hooks.Provisioning[1].Name),
+							Namespace: r.Namespace,
+						}
+						Expect(k8sClient.Get(ctx, pk, &p)).To(MatchError(kerrors.IsNotFound, "NotFound"))
+					}
+				})
+
+				It("creates the second provisioning pod when the first is done", func(ctx context.Context) {
+					By("The pod succeed and Runner status is updated by the RunnerHookController")
+					r := maykonfluxcidevv1alpha1.Runner{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+
+					r.Status.HooksStatus.Provisioning = []maykonfluxcidevv1alpha1.RunnerHookStatus{
+						{
+							Hook:              r.Spec.Hooks.Provisioning[0].Name,
+							Phase:             corev1.PodSucceeded,
+							PodMessage:        "pod succeeded",
+							DeletionTimestamp: nil,
+						},
+					}
+					Expect(k8sClient.Status().Update(ctx, &r)).To(Succeed())
+
+					By("Reconciling the Runner")
+					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+						NamespacedName: typeNamespacedName,
+					})
+					Expect(err).NotTo(HaveOccurred())
+
+					By("Checking the second provisioning pod is created")
 					p := corev1.Pod{}
 					pk := types.NamespacedName{
 						Name: fmt.Sprintf("p-%s-%s",
@@ -234,75 +271,43 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 							r.Spec.Hooks.Provisioning[1].Name),
 						Namespace: r.Namespace,
 					}
-					Expect(k8sClient.Get(ctx, pk, &p)).To(MatchError(kerrors.IsNotFound, "NotFound"))
-				}
-			})
 
-			It("creates the second provisioning pod when the first is done", func(ctx context.Context) {
-				By("The pod succeed and Runner status is updated by the RunnerHookController")
-				r := maykonfluxcidevv1alpha1.Runner{}
-				Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
-
-				r.Status.HooksStatus.Provisioning = []maykonfluxcidevv1alpha1.RunnerHookStatus{
-					{
-						Hook:              r.Spec.Hooks.Provisioning[0].Name,
-						Phase:             corev1.PodSucceeded,
-						PodMessage:        "pod succeeded",
-						DeletionTimestamp: nil,
-					},
-				}
-				Expect(k8sClient.Status().Update(ctx, &r)).To(Succeed())
-
-				By("Reconciling the Runner")
-				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-					NamespacedName: typeNamespacedName,
+					Expect(k8sClient.Get(ctx, pk, &p)).To(Succeed())
+					Expect(p.Spec).ToNot(Equal(r.Spec.Hooks.Provisioning[1].Template))
+					Expect(controllerutil.HasControllerReference(&p)).To(BeTrue())
 				})
-				Expect(err).NotTo(HaveOccurred())
 
-				By("Checking the second provisioning pod is created")
-				p := corev1.Pod{}
-				pk := types.NamespacedName{
-					Name: fmt.Sprintf("p-%s-%s",
-						r.Name,
-						r.Spec.Hooks.Provisioning[1].Name),
-					Namespace: r.Namespace,
-				}
+				It("sets the runner as ready when provisioning pods are done", func(ctx context.Context) {
+					By("The pod succeed and Runner status is updated by the RunnerHookController")
+					r := maykonfluxcidevv1alpha1.Runner{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
 
-				Expect(k8sClient.Get(ctx, pk, &p)).To(Succeed())
-				Expect(p.Spec).ToNot(Equal(r.Spec.Hooks.Provisioning[1].Template))
-				Expect(controllerutil.HasControllerReference(&p)).To(BeTrue())
-			})
+					r.Status.HooksStatus.Provisioning = []maykonfluxcidevv1alpha1.RunnerHookStatus{
+						{
+							Hook:              r.Spec.Hooks.Provisioning[0].Name,
+							Phase:             corev1.PodSucceeded,
+							PodMessage:        "pod succeeded",
+							DeletionTimestamp: nil,
+						},
+						{
+							Hook:              r.Spec.Hooks.Provisioning[1].Name,
+							Phase:             corev1.PodSucceeded,
+							PodMessage:        "pod succeeded",
+							DeletionTimestamp: nil,
+						},
+					}
+					Expect(k8sClient.Status().Update(ctx, &r)).To(Succeed())
 
-			It("sets the runner as ready when provisioning pods are done", func(ctx context.Context) {
-				By("The pod succeed and Runner status is updated by the RunnerHookController")
-				r := maykonfluxcidevv1alpha1.Runner{}
-				Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+					By("Reconciling the Runner")
+					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+						NamespacedName: typeNamespacedName,
+					})
+					Expect(err).NotTo(HaveOccurred())
 
-				r.Status.HooksStatus.Provisioning = []maykonfluxcidevv1alpha1.RunnerHookStatus{
-					{
-						Hook:              r.Spec.Hooks.Provisioning[0].Name,
-						Phase:             corev1.PodSucceeded,
-						PodMessage:        "pod succeeded",
-						DeletionTimestamp: nil,
-					},
-					{
-						Hook:              r.Spec.Hooks.Provisioning[1].Name,
-						Phase:             corev1.PodSucceeded,
-						PodMessage:        "pod succeeded",
-						DeletionTimestamp: nil,
-					},
-				}
-				Expect(k8sClient.Status().Update(ctx, &r)).To(Succeed())
-
-				By("Reconciling the Runner")
-				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-					NamespacedName: typeNamespacedName,
+					By("Checking the Runner is Ready")
+					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+					Expect(runner.IsReady(r)).To(BeTrue())
 				})
-				Expect(err).NotTo(HaveOccurred())
-
-				By("Checking the Runner is Ready")
-				Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
-				Expect(runner.IsReady(r)).To(BeTrue())
 			})
 
 			When("Runner is Ready", func() {
@@ -470,7 +475,6 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 						Not(BeNil()),
 						HaveValue(Equal(kueuev1beta1.None))))
 				})
-
 			})
 		})
 	})
