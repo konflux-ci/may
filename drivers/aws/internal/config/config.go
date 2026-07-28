@@ -205,20 +205,20 @@ func configurationFromAnnotations(annotations map[string]string) (AWSConfigurati
 
 	// Parsing throughput annotation if found.
 	if v, ok := annotations[AnnotationThroughput]; ok {
-		throughput, err := parseOptionalInt32(AnnotationThroughput, v)
+		throughput, err := parseInt32(AnnotationThroughput, v)
 		if err != nil {
 			return AWSConfiguration{}, err
 		}
-		cfg.Throughput = throughput
+		cfg.Throughput = &throughput
 	}
 
 	// Parsing IOPS annotation if found.
 	if v, ok := annotations[AnnotationIops]; ok {
-		iops, err := parseOptionalInt32(AnnotationIops, v)
+		iops, err := parseInt32(AnnotationIops, v)
 		if err != nil {
 			return AWSConfiguration{}, err
 		}
-		cfg.Iops = iops
+		cfg.Iops = &iops
 	}
 
 	// Parsing user data annotation if found.
@@ -239,15 +239,6 @@ func parseInt32(annotation, value string) (int32, error) {
 		return 0, fmt.Errorf("invalid AWS annotation %q: %w", annotation, err)
 	}
 	return int32(v), nil
-}
-
-// parseOptionalInt32 parses an optional int32 annotation when the key is present.
-func parseOptionalInt32(annotation, value string) (*int32, error) {
-	parsed, err := parseInt32(annotation, value)
-	if err != nil {
-		return nil, err
-	}
-	return &parsed, nil
 }
 
 // parseBool parses a string as a boolean when the annotation is present.

@@ -63,9 +63,10 @@ var _ = Describe("validateCredentialEnvironment", func() {
 
 			err := validateCredentialEnvironment()
 
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring("AWS_WEB_IDENTITY_TOKEN_FILE"))
-			Expect(err.Error()).Should(ContainSubstring("AWS_ROLE_ARN"))
+			Expect(err).Should(MatchError(
+				ContainSubstring("AWS_WEB_IDENTITY_TOKEN_FILE"),
+				ContainSubstring("AWS_ROLE_ARN"),
+			))
 		})
 	})
 
@@ -76,9 +77,10 @@ var _ = Describe("validateCredentialEnvironment", func() {
 
 			err := validateCredentialEnvironment()
 
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring("AWS_WEB_IDENTITY_TOKEN_FILE"))
-			Expect(err.Error()).Should(ContainSubstring("AWS_ROLE_ARN"))
+			Expect(err).Should(MatchError(
+				ContainSubstring("AWS_WEB_IDENTITY_TOKEN_FILE"),
+				ContainSubstring("AWS_ROLE_ARN"),
+			))
 		})
 	})
 
@@ -89,8 +91,7 @@ var _ = Describe("validateCredentialEnvironment", func() {
 
 			err := validateCredentialEnvironment()
 
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring("/tmp/missing-aws-web-identity-token"))
+			Expect(err).Should(MatchError(ContainSubstring("/tmp/missing-aws-web-identity-token")))
 		})
 	})
 
@@ -118,8 +119,8 @@ var _ = Describe("EC2 client construction", func() {
 
 	var _ = Describe("newEC2Client", func() {
 		When("the region is missing", func() {
-			It("should return a validation error", func() {
-				ec2Client, err := newEC2Client(context.Background(), internalconfig.AWSConfiguration{})
+			It("should return a validation error", func(ctx context.Context) {
+				ec2Client, err := newEC2Client(ctx, internalconfig.AWSConfiguration{})
 
 				Expect(err).Should(HaveOccurred())
 				Expect(err.Error()).Should(ContainSubstring(internalconfig.AnnotationRegion))
@@ -128,8 +129,8 @@ var _ = Describe("EC2 client construction", func() {
 		})
 
 		When("the region is configured", func() {
-			It("should return an EC2 client for that region", func() {
-				ec2Client, err := newEC2Client(context.Background(), internalconfig.AWSConfiguration{
+			It("should return an EC2 client for that region", func(ctx context.Context) {
+				ec2Client, err := newEC2Client(ctx, internalconfig.AWSConfiguration{
 					Region: "us-east-1",
 				})
 
@@ -142,7 +143,7 @@ var _ = Describe("EC2 client construction", func() {
 
 	var _ = Describe("NewStaticEC2Client", func() {
 		When("the StaticHost has a region annotation", func() {
-			It("should return an EC2 client for the configured region", func() {
+			It("should return an EC2 client for the configured region", func(ctx context.Context) {
 				host := &maykonfluxcidevv1alpha1.StaticHost{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "aws-static-host",
@@ -152,7 +153,7 @@ var _ = Describe("EC2 client construction", func() {
 					},
 				}
 
-				ec2Client, err := NewStaticEC2Client(context.Background(), host)
+				ec2Client, err := NewStaticEC2Client(ctx, host)
 
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ec2Client).ShouldNot(BeNil())
@@ -161,7 +162,7 @@ var _ = Describe("EC2 client construction", func() {
 		})
 
 		When("the StaticHost has invalid AWS annotations", func() {
-			It("should return a configuration error", func() {
+			It("should return a configuration error", func(ctx context.Context) {
 				host := &maykonfluxcidevv1alpha1.StaticHost{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "aws-static-host",
@@ -172,7 +173,7 @@ var _ = Describe("EC2 client construction", func() {
 					},
 				}
 
-				ec2Client, err := NewStaticEC2Client(context.Background(), host)
+				ec2Client, err := NewStaticEC2Client(ctx, host)
 
 				Expect(err).Should(HaveOccurred())
 				Expect(err.Error()).Should(ContainSubstring(internalconfig.AnnotationDisk))
@@ -183,7 +184,7 @@ var _ = Describe("EC2 client construction", func() {
 
 	var _ = Describe("NewDynamicEC2Client", func() {
 		When("the DynamicHost has a region annotation", func() {
-			It("should return an EC2 client for the configured region", func() {
+			It("should return an EC2 client for the configured region", func(ctx context.Context) {
 				host := &maykonfluxcidevv1alpha1.DynamicHost{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "aws-dynamic-host",
@@ -193,7 +194,7 @@ var _ = Describe("EC2 client construction", func() {
 					},
 				}
 
-				ec2Client, err := NewDynamicEC2Client(context.Background(), host)
+				ec2Client, err := NewDynamicEC2Client(ctx, host)
 
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ec2Client).ShouldNot(BeNil())

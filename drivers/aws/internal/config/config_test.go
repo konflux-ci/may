@@ -18,12 +18,14 @@ package config
 
 import (
 	"context"
+	"fmt"
+	"math"
+	"math/big"
 
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 )
 
 var _ = Describe("parseInt32", func() {
@@ -35,6 +37,7 @@ var _ = Describe("parseInt32", func() {
 			Expect(value).Should(Equal(expected))
 		},
 		Entry("a valid integer", "40", int32(40)),
+		Entry("max int32", fmt.Sprintf("%v", math.MaxInt32), int32(math.MaxInt32)),
 		Entry("zero", "0", int32(0)),
 	)
 
@@ -48,28 +51,14 @@ var _ = Describe("parseInt32", func() {
 		Entry("an empty string", ""),
 		Entry("a non-numeric value", "not-a-number"),
 		Entry("a negative integer", "-1"),
-		Entry("a value outside int32 range", "2147483648"),
-	)
-})
-
-var _ = Describe("parseOptionalInt32", func() {
-	It("should parse a valid integer", func() {
-		value, err := parseOptionalInt32(AnnotationThroughput, "125")
-
-		Expect(err).ShouldNot(HaveOccurred())
-		Expect(value).Should(Equal(ptr.To(int32(125))))
-	})
-
-	DescribeTable("invalid optional integer annotation parsing",
-		func(input string) {
-			_, err := parseOptionalInt32(AnnotationThroughput, input)
-
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring(AnnotationThroughput))
-		},
-		Entry("an empty string", ""),
-		Entry("a non-numeric value", "not-a-number"),
-		Entry("a negative integer", "-1"),
+		Entry("min int32", fmt.Sprintf("%v", math.MinInt32)),
+		Entry("above max int32", fmt.Sprintf("%v", math.MaxInt32+1)),
+		Entry("min int64", fmt.Sprintf("%v", math.MinInt64)),
+		Entry("max int64", fmt.Sprintf("%v", math.MaxInt64)),
+		Entry("max int64 * 2",
+			big.NewInt(0).Mul(big.NewInt(math.MaxInt64), big.NewInt(2)).String()),
+		Entry("min int64 * 2",
+			big.NewInt(0).Mul(big.NewInt(math.MinInt64), big.NewInt(2)).String()),
 	)
 })
 
@@ -186,43 +175,33 @@ var _ = Describe("configurationFromAnnotations", func() {
 	})
 
 	When("throughput or iops annotations are invalid", func() {
-		It("should return an error for invalid throughput", func() {
-			_, err := configurationFromAnnotations(map[string]string{
-				AnnotationThroughput: "not-a-number",
-			})
+		DescribeTable("should return an error",
+			func(annotation string) {
+				_, err := configurationFromAnnotations(map[string]string{
+					annotation: "invalid",
+				})
 
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring(AnnotationThroughput))
-		})
-
-		It("should return an error for invalid iops", func() {
-			_, err := configurationFromAnnotations(map[string]string{
-				AnnotationIops: "also-invalid",
-			})
-
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring(AnnotationIops))
-		})
+				Expect(err).Should(HaveOccurred())
+				Expect(err.Error()).Should(ContainSubstring(annotation))
+			},
+			Entry("Throughput", AnnotationThroughput),
+			Entry("Iops", AnnotationIops),
+		)
 	})
 
 	When("present optional annotations are empty", func() {
-		It("should return an error for empty throughput", func() {
-			_, err := configurationFromAnnotations(map[string]string{
-				AnnotationThroughput: "",
-			})
+		DescribeTable("should return an error",
+			func(annotation string) {
+				_, err := configurationFromAnnotations(map[string]string{
+					annotation: "",
+				})
 
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring(AnnotationThroughput))
-		})
-
-		It("should return an error for empty user-data", func() {
-			_, err := configurationFromAnnotations(map[string]string{
-				AnnotationUserData: "",
-			})
-
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring(AnnotationUserData))
-		})
+				Expect(err).Should(HaveOccurred())
+				Expect(err.Error()).Should(ContainSubstring(annotation))
+			},
+			Entry("Throughput", AnnotationThroughput),
+			Entry("UserData", AnnotationUserData),
+		)
 	})
 
 	When("the disk annotation is invalid", func() {
@@ -262,7 +241,7 @@ var _ = Describe("configurationFromAnnotations", func() {
 
 var _ = Describe("GetStaticAWSConfiguration", func() {
 	When("the StaticHost has AWS annotations", func() {
-		It("should build configuration from host metadata", func() {
+		It("should build configuration from host metadata", func(ctx context.Context) {
 			host := &maykonfluxcidevv1alpha1.StaticHost{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "aws-host-arm64",
@@ -275,7 +254,7 @@ var _ = Describe("GetStaticAWSConfiguration", func() {
 				},
 			}
 
-			cfg, err := GetStaticAWSConfiguration(context.Background(), host)
+			cfg, err := GetStaticAWSConfiguration(ctx, host)
 
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(cfg).Should(Equal(AWSConfiguration{
@@ -287,7 +266,7 @@ var _ = Describe("GetStaticAWSConfiguration", func() {
 	})
 
 	When("the StaticHost has invalid AWS annotations", func() {
-		It("should return an error", func() {
+		It("should return an error", func(ctx context.Context) {
 			host := &maykonfluxcidevv1alpha1.StaticHost{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "aws-host-arm64",
@@ -297,7 +276,7 @@ var _ = Describe("GetStaticAWSConfiguration", func() {
 				},
 			}
 
-			_, err := GetStaticAWSConfiguration(context.Background(), host)
+			_, err := GetStaticAWSConfiguration(ctx, host)
 
 			Expect(err).Should(HaveOccurred())
 			Expect(err.Error()).Should(ContainSubstring(AnnotationDisk))
@@ -307,7 +286,7 @@ var _ = Describe("GetStaticAWSConfiguration", func() {
 
 var _ = Describe("GetDynamicAWSConfiguration", func() {
 	When("the DynamicHost has AWS annotations", func() {
-		It("should build configuration from host metadata", func() {
+		It("should build configuration from host metadata", func(ctx context.Context) {
 			host := &maykonfluxcidevv1alpha1.DynamicHost{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "aws-host-amd64",
@@ -320,7 +299,7 @@ var _ = Describe("GetDynamicAWSConfiguration", func() {
 				},
 			}
 
-			cfg, err := GetDynamicAWSConfiguration(context.Background(), host)
+			cfg, err := GetDynamicAWSConfiguration(ctx, host)
 
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(cfg).Should(Equal(AWSConfiguration{
@@ -328,6 +307,25 @@ var _ = Describe("GetDynamicAWSConfiguration", func() {
 				Ami:          "ami-dynamic",
 				InstanceType: "m6a.4xlarge",
 			}))
+		})
+	})
+
+	When("The DynamicHost has invalid AWS Annotations", func() {
+		It("should propagate the error", func(ctx context.Context) {
+			host := &maykonfluxcidevv1alpha1.DynamicHost{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "aws-host-amd64",
+					Namespace: "may-system",
+					Annotations: map[string]string{
+						AnnotationThroughput: "invalid",
+					},
+				},
+			}
+
+			cfg, err := GetDynamicAWSConfiguration(ctx, host)
+
+			Expect(err).Should(MatchError(ContainSubstring(AnnotationThroughput)))
+			Expect(cfg).Should(BeZero())
 		})
 	})
 })
