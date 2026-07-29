@@ -111,9 +111,11 @@ func (r *RunnerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	case runner.IsReady(u):
 		// create ClusterQueue
-		l.Info("ensuring queue exists", "status", u.Status)
-		if err := r.ensureClusterQueueExists(ctx, u); err != nil {
-			return ctrl.Result{}, err
+		if u.Spec.Queue != nil {
+			l.Info("ensuring queue exists", "status", u.Status)
+			if err := r.ensureClusterQueueExists(ctx, u); err != nil {
+				return ctrl.Result{}, err
+			}
 		}
 
 		if runner.IsReserved(u) {
