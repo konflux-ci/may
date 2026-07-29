@@ -23,8 +23,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
@@ -90,20 +90,20 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 						Cohort: "my-cohort",
 					},
 					Flavor: "my-flavor",
-					Resources: v1.ResourceList{
-						v1.ResourceCPU: resource.MustParse("1"),
+					Resources: corev1.ResourceList{
+						corev1.ResourceCPU: resource.MustParse("1"),
 					},
 					Hooks: &maykonfluxcidevv1alpha1.RunnerHooks{
 						Provisioning: []maykonfluxcidevv1alpha1.RunnerHookPodTemplateSpec{
 							{
 								Name: "provisioning-pod-1",
-								Template: v1.PodTemplateSpec{
-									Spec: v1.PodSpec{
-										RestartPolicy: v1.RestartPolicyNever,
-										Containers: []v1.Container{
+								Template: corev1.PodTemplateSpec{
+									Spec: corev1.PodSpec{
+										RestartPolicy: corev1.RestartPolicyNever,
+										Containers: []corev1.Container{
 											{
 												Name:          "provisioning-container",
-												RestartPolicy: ptr.To(v1.ContainerRestartPolicyNever),
+												RestartPolicy: ptr.To(corev1.ContainerRestartPolicyNever),
 												Image:         image,
 												Command:       []string{"exit"},
 												Args:          []string{"0"},
@@ -114,13 +114,13 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 							},
 							{
 								Name: "provisioning-pod-2",
-								Template: v1.PodTemplateSpec{
-									Spec: v1.PodSpec{
-										RestartPolicy: v1.RestartPolicyNever,
-										Containers: []v1.Container{
+								Template: corev1.PodTemplateSpec{
+									Spec: corev1.PodSpec{
+										RestartPolicy: corev1.RestartPolicyNever,
+										Containers: []corev1.Container{
 											{
 												Name:          "provisioning-container",
-												RestartPolicy: ptr.To(v1.ContainerRestartPolicyNever),
+												RestartPolicy: ptr.To(corev1.ContainerRestartPolicyNever),
 												Image:         image,
 												Command:       []string{"exit"},
 												Args:          []string{"0"},
@@ -207,6 +207,22 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 
 			When("the Runner is Initializing", func() {
 				It("creates the first provisioning pod", func(ctx context.Context) {
+					By("Calculating the expected pod built from the Runner's PodSpec")
+					r := maykonfluxcidevv1alpha1.Runner{}
+					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+
+					pk0 := types.NamespacedName{
+						Name: fmt.Sprintf("p-%s-%s",
+							r.Name,
+							r.Spec.Hooks.Provisioning[0].Name),
+						Namespace: r.Namespace,
+					}
+					ep0 := corev1.Pod{
+						ObjectMeta: metav1.ObjectMeta{Name: pk0.Name, Namespace: pk0.Namespace},
+						Spec:       r.Spec.Hooks.Provisioning[0].Template.Spec,
+					}
+					Expect(k8sClient.Create(ctx, &ep0, client.DryRunAll)).To(Succeed())
+
 					By("Reconciling the runner")
 					_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 						NamespacedName: typeNamespacedName,
@@ -214,39 +230,40 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 					Expect(err).NotTo(HaveOccurred())
 
 					By("Checking the first provisioning pod is created")
-					r := maykonfluxcidevv1alpha1.Runner{}
-					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
-					{
-						p := corev1.Pod{}
-						pk := types.NamespacedName{
-							Name: fmt.Sprintf("p-%s-%s",
-								r.Name,
-								r.Spec.Hooks.Provisioning[0].Name),
-							Namespace: r.Namespace,
-						}
-						Expect(k8sClient.Get(ctx, pk, &p)).To(Succeed())
-						Expect(p.Spec).ToNot(Equal(r.Spec.Hooks.Provisioning[0].Template))
-						Expect(controllerutil.HasControllerReference(&p)).To(BeTrue())
-					}
+					ap0 := corev1.Pod{}
+					Expect(k8sClient.Get(ctx, pk0, &ap0)).To(Succeed())
+					Expect(controllerutil.HasControllerReference(&ap0)).To(BeTrue())
+					Expect(ap0.Spec).To(Equal(ep0.Spec))
 
 					By("Checking the second provisioning pod doesn't exist yet")
-					{
-						p := corev1.Pod{}
-						pk := types.NamespacedName{
-							Name: fmt.Sprintf("p-%s-%s",
-								r.Name,
-								r.Spec.Hooks.Provisioning[1].Name),
-							Namespace: r.Namespace,
-						}
-						Expect(k8sClient.Get(ctx, pk, &p)).To(MatchError(kerrors.IsNotFound, "NotFound"))
+					ap1 := corev1.Pod{}
+					pk1 := types.NamespacedName{
+						Name: fmt.Sprintf("p-%s-%s",
+							r.Name,
+							r.Spec.Hooks.Provisioning[1].Name),
+						Namespace: r.Namespace,
 					}
+					Expect(k8sClient.Get(ctx, pk1, &ap1)).To(MatchError(kerrors.IsNotFound, "NotFound"))
 				})
 
 				It("creates the second provisioning pod when the first is done", func(ctx context.Context) {
-					By("The pod succeed and Runner status is updated by the RunnerHookController")
+					By("Calculating the expected pod built from the Runner's PodSpec")
 					r := maykonfluxcidevv1alpha1.Runner{}
 					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
+					pk := types.NamespacedName{
+						Name: fmt.Sprintf("p-%s-%s",
+							r.Name,
+							r.Spec.Hooks.Provisioning[1].Name),
+						Namespace: r.Namespace,
+					}
+					ep := corev1.Pod{
+						ObjectMeta: metav1.ObjectMeta{Name: pk.Name, Namespace: pk.Namespace},
+						Spec:       r.Spec.Hooks.Provisioning[1].Template.Spec,
+					}
+					Expect(k8sClient.Create(ctx, &ep, client.DryRunAll)).To(Succeed())
 
+					By("The pod succeed and Runner status is updated by the RunnerHookController")
+					Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
 					r.Status.HooksStatus.Provisioning = []maykonfluxcidevv1alpha1.RunnerHookStatus{
 						{
 							Hook:              r.Spec.Hooks.Provisioning[0].Name,
@@ -264,17 +281,10 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 					Expect(err).NotTo(HaveOccurred())
 
 					By("Checking the second provisioning pod is created")
-					p := corev1.Pod{}
-					pk := types.NamespacedName{
-						Name: fmt.Sprintf("p-%s-%s",
-							r.Name,
-							r.Spec.Hooks.Provisioning[1].Name),
-						Namespace: r.Namespace,
-					}
-
-					Expect(k8sClient.Get(ctx, pk, &p)).To(Succeed())
-					Expect(p.Spec).ToNot(Equal(r.Spec.Hooks.Provisioning[1].Template))
-					Expect(controllerutil.HasControllerReference(&p)).To(BeTrue())
+					ap := corev1.Pod{}
+					Expect(k8sClient.Get(ctx, pk, &ap)).To(Succeed())
+					Expect(ap.Spec).To(Equal(ep.Spec))
+					Expect(controllerutil.HasControllerReference(&ap)).To(BeTrue())
 				})
 
 				It("sets the runner as ready when provisioning pods are done", func(ctx context.Context) {
