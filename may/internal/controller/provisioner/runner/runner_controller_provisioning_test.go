@@ -138,13 +138,39 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 		})
 
 		AfterAll(func(ctx context.Context) {
-			// TODO(user): Cleanup logic after each test, like removing the r instance.
 			r := &maykonfluxcidevv1alpha1.Runner{}
 			err := k8sClient.Get(ctx, typeNamespacedName, r)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Cleanup the specific resource instance Runner")
-			Expect(k8sClient.Delete(ctx, r)).To(Succeed())
+			// remove finalizers if any
+			if len(r.Finalizers) > 0 {
+				r.Finalizers = []string{}
+				Expect(k8sClient.Update(ctx, r)).To(Succeed())
+				Expect(k8sClient.Get(ctx, typeNamespacedName, r)).To(Succeed())
+			}
+			// delete the Runner
+			Expect(k8sClient.Delete(ctx, r)).To(
+				Or(Succeed(), MatchError(kerrors.IsNotFound, "IsNotFound")))
+			Expect(k8sClient.Get(ctx, typeNamespacedName, r)).
+				To(MatchError(kerrors.IsNotFound, "IsNotFound"))
+
+			By("Cleaning up the created ClusterQueue")
+			cqt := types.NamespacedName{Name: r.Name}
+			cq := kueuev1beta1.ClusterQueue{}
+			Expect(k8sClient.Get(ctx, cqt, &cq)).
+				To(Or(Succeed(), MatchError(kerrors.IsNotFound, "IsNotFound")))
+			// remove finalizers if any
+			if len(cq.Finalizers) > 0 {
+				cq.Finalizers = []string{}
+				Expect(k8sClient.Update(ctx, &cq)).To(Succeed())
+				Expect(k8sClient.Get(ctx, cqt, &cq)).To(Succeed())
+			}
+			// delete the ClusterQueue
+			Expect(k8sClient.Delete(ctx, &cq)).
+				To(Or(Succeed(), MatchError(kerrors.IsNotFound, "IsNotFound")))
+			Expect(k8sClient.Get(ctx, cqt, &cq)).
+				To(MatchError(kerrors.IsNotFound, "IsNotFound"))
 		})
 
 		Describe("Error Handling", func() {
@@ -368,6 +394,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 					Expect(cq.Spec.StopPolicy).To(And(
 						Not(BeNil()),
 						HaveValue(Equal(kueuev1beta1.None))))
+
 				})
 
 				It("recreates the ClusterQueue if deleted", func(ctx context.Context) {
