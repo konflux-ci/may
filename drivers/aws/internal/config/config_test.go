@@ -45,8 +45,7 @@ var _ = Describe("parseInt32", func() {
 		func(input string) {
 			_, err := parseInt32(AnnotationDisk, input)
 
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring(AnnotationDisk))
+			Expect(err).Should(MatchError(ContainSubstring(AnnotationDisk)))
 		},
 		Entry("an empty string", ""),
 		Entry("a non-numeric value", "not-a-number"),
@@ -79,8 +78,7 @@ var _ = Describe("parseBool", func() {
 		func(input string) {
 			_, err := parseBool(AnnotationStrictPublicAddress, input)
 
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring(AnnotationStrictPublicAddress))
+			Expect(err).Should(MatchError(ContainSubstring(AnnotationStrictPublicAddress)))
 		},
 		Entry("an empty string", ""),
 		Entry("an invalid value", "maybe"),
@@ -181,8 +179,7 @@ var _ = Describe("configurationFromAnnotations", func() {
 					annotation: "invalid",
 				})
 
-				Expect(err).Should(HaveOccurred())
-				Expect(err.Error()).Should(ContainSubstring(annotation))
+				Expect(err).Should(MatchError(ContainSubstring(annotation)))
 			},
 			Entry("Throughput", AnnotationThroughput),
 			Entry("Iops", AnnotationIops),
@@ -196,8 +193,7 @@ var _ = Describe("configurationFromAnnotations", func() {
 					annotation: "",
 				})
 
-				Expect(err).Should(HaveOccurred())
-				Expect(err.Error()).Should(ContainSubstring(annotation))
+				Expect(err).Should(MatchError(ContainSubstring(annotation)))
 			},
 			Entry("Throughput", AnnotationThroughput),
 			Entry("UserData", AnnotationUserData),
@@ -210,8 +206,7 @@ var _ = Describe("configurationFromAnnotations", func() {
 				AnnotationDisk: "not-a-number",
 			})
 
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring(AnnotationDisk))
+			Expect(err).Should(MatchError(ContainSubstring(AnnotationDisk)))
 		})
 	})
 
@@ -221,8 +216,7 @@ var _ = Describe("configurationFromAnnotations", func() {
 				AnnotationStrictPublicAddress: "maybe",
 			})
 
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring(AnnotationStrictPublicAddress))
+			Expect(err).Should(MatchError(ContainSubstring(AnnotationStrictPublicAddress)))
 		})
 	})
 
@@ -278,8 +272,7 @@ var _ = Describe("GetStaticAWSConfiguration", func() {
 
 			_, err := GetStaticAWSConfiguration(ctx, host)
 
-			Expect(err).Should(HaveOccurred())
-			Expect(err.Error()).Should(ContainSubstring(AnnotationDisk))
+			Expect(err).Should(MatchError(ContainSubstring(AnnotationDisk)))
 		})
 	})
 })

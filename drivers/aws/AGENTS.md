@@ -98,10 +98,10 @@ back to the node instance metadata service if web-identity env vars are wrong.
 When both web-identity env vars are set, client creation verifies the token file
 exists before calling the EC2 API.
 
+## Local development
+
 Local development can use exported `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
 or an `AWS_PROFILE` instead of web identity.
-
-## Local development
 
 No driver code or manifest changes are required. `make run` uses the same
 `LoadDefaultConfig` path; only how credentials are supplied differs.

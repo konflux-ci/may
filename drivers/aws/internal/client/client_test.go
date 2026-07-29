@@ -175,8 +175,7 @@ var _ = Describe("EC2 client construction", func() {
 
 				ec2Client, err := NewStaticEC2Client(ctx, host)
 
-				Expect(err).Should(HaveOccurred())
-				Expect(err.Error()).Should(ContainSubstring(internalconfig.AnnotationDisk))
+				Expect(err).Should(MatchError(ContainSubstring(internalconfig.AnnotationDisk)))
 				Expect(ec2Client).Should(BeNil())
 			})
 		})
