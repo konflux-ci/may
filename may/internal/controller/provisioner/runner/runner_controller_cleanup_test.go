@@ -78,13 +78,13 @@ var _ = Describe("Runner Controller (Cleanup)", Ordered, Serial, func() {
 						Provisioning: []maykonfluxcidevv1alpha1.RunnerHookPodTemplateSpec{},
 						Cleanup: []maykonfluxcidevv1alpha1.RunnerHookPodTemplateSpec{
 							{
-								Name: "cleanuc-pod-1",
+								Name: "cleanup-pod-1",
 								Template: corev1.PodTemplateSpec{
 									Spec: corev1.PodSpec{
 										RestartPolicy: corev1.RestartPolicyNever,
 										Containers: []corev1.Container{
 											{
-												Name:          "cleanuc-container",
+												Name:          "cleanup-container",
 												RestartPolicy: ptr.To(corev1.ContainerRestartPolicyNever),
 												Image:         image,
 												Command:       []string{"exit"},
@@ -95,13 +95,13 @@ var _ = Describe("Runner Controller (Cleanup)", Ordered, Serial, func() {
 								},
 							},
 							{
-								Name: "cleanuc-pod-2",
+								Name: "cleanup-pod-2",
 								Template: corev1.PodTemplateSpec{
 									Spec: corev1.PodSpec{
 										RestartPolicy: corev1.RestartPolicyNever,
 										Containers: []corev1.Container{
 											{
-												Name:          "cleanuc-container",
+												Name:          "cleanup-container",
 												RestartPolicy: ptr.To(corev1.ContainerRestartPolicyNever),
 												Image:         image,
 												Command:       []string{"exit"},
