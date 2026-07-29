@@ -67,9 +67,6 @@ var _ = Describe("Runner Controller (Cleanup)", Ordered, Serial, func() {
 					Finalizers: []string{constants.RunnerControllerFinalizer},
 				},
 				Spec: maykonfluxcidevv1alpha1.RunnerSpec{
-					// Queue: &maykonfluxcidevv1alpha1.RunnerQueue{
-					// 	Cohort: "my-cohort",
-					// },
 					Flavor: "my-flavor",
 					Resources: corev1.ResourceList{
 						corev1.ResourceCPU: resource.MustParse("1"),
