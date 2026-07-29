@@ -1,4 +1,12 @@
 # Adds namespace to all resources.
+#
+# These fields also determine the controller ServiceAccount identity used in AWS
+# IAM AssumeRoleWithWebIdentity trust. Subject format:
+#   system:serviceaccount:<namespace>:<serviceaccount-name>
+# With this overlay, that is:
+#   system:serviceaccount:driver-aws-system:driver-aws-controller-manager
+# If you change namespace or namePrefix, re-render with kubectl kustomize and
+# update the IAM role trust policy "sub" condition to match.
 namespace: driver-aws-system
 
 # Value of this field is prepended to the
