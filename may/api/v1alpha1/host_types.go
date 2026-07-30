@@ -29,6 +29,7 @@ type HostCoreSpec struct {
 	Flavor string `json:"flavor"`
 
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	Queue *RunnerQueue `json:"queue,omitempty"`
 
 	// +kubebuilder:default:=Pending

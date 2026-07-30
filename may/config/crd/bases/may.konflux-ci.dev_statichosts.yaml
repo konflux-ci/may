@@ -52,6 +52,9 @@ spec:
                 required:
                 - cohort
                 type: object
+                x-kubernetes-validations:
+                - message: Value is immutable
+                  rule: self == oldSelf
               rootKey:
                 description: |-
                   LocalObjectReference contains enough information to let you locate the
