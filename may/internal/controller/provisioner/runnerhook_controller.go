@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
+	provisionerconstants "github.com/konflux-ci/may/internal/controller/provisioner/constants"
 	"github.com/konflux-ci/may/pkg/constants"
 	"github.com/konflux-ci/may/pkg/runner"
 )
@@ -63,7 +64,7 @@ func (r *RunnerHookReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			client.InNamespace(req.Namespace),
 			client.MatchingLabels{
 				constants.RunnerNameLabel:      u.Name,
-				constants.RunnerHookPhaseLabel: RunnerHookPhaseLabelProvisioningValue,
+				constants.RunnerHookPhaseLabel: provisionerconstants.RunnerHookPhaseLabelProvisioningValue,
 			}); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -79,7 +80,7 @@ func (r *RunnerHookReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			client.InNamespace(req.Namespace),
 			client.MatchingLabels{
 				constants.RunnerNameLabel:      u.Name,
-				constants.RunnerHookPhaseLabel: RunnerHookPhaseLabelCleanupValue,
+				constants.RunnerHookPhaseLabel: provisionerconstants.RunnerHookPhaseLabelCleanupValue,
 			}); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -120,7 +121,7 @@ func (r *RunnerHookReconciler) calculateStatus(pp corev1.PodList, us []maykonflu
 func (r *RunnerHookReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&maykonfluxcidevv1alpha1.Runner{}, builder.WithPredicates(predicate.NewPredicateFuncs(func(obj client.Object) bool {
-			return obj.GetLabels()[constants.RunnerTypeLabel] == RunnerTypeStatic
+			return obj.GetLabels()[constants.RunnerTypeLabel] == provisionerconstants.RunnerTypeStatic
 		}))).
 		Owns(&corev1.Pod{}).
 		Named("runnerhooks").
