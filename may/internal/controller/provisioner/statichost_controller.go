@@ -37,7 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
-	runnerconstants "github.com/konflux-ci/may/internal/controller/provisioner/constants"
+	provisionerconstants "github.com/konflux-ci/may/internal/controller/provisioner/constants"
 	"github.com/konflux-ci/may/pkg/constants"
 	"github.com/konflux-ci/may/pkg/runner"
 )
@@ -233,7 +233,7 @@ func (r *StaticHostReconciler) ensureHostRunnersExists(ctx context.Context, h *m
 			maps.Copy(u.Labels, h.GetLabels())
 			u.Labels[constants.HostLabel] = h.Name
 			u.Labels[constants.RunnerIdLabel] = fmt.Sprintf("%v", i)
-			u.Labels[constants.RunnerTypeLabel] = runnerconstants.RunnerTypeStatic
+			u.Labels[constants.RunnerTypeLabel] = provisionerconstants.RunnerTypeStatic
 			u.Spec.Resources = h.Spec.Runners.Resources
 			u.Spec.Flavor = h.Spec.Flavor
 			u.Spec.Queue = h.Spec.Queue

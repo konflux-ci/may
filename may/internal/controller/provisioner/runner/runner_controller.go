@@ -39,7 +39,7 @@ import (
 	kueuev1beta1 "sigs.k8s.io/kueue/apis/kueue/v1beta1"
 
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
-	runnerconstants "github.com/konflux-ci/may/internal/controller/provisioner/constants"
+	provisionerconstants "github.com/konflux-ci/may/internal/controller/provisioner/constants"
 	"github.com/konflux-ci/may/pkg/constants"
 	"github.com/konflux-ci/may/pkg/runner"
 )
@@ -86,7 +86,7 @@ func (r *RunnerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// ensure finalizer is set
-	if controllerutil.AddFinalizer(&u, runnerconstants.RunnerControllerFinalizer) {
+	if controllerutil.AddFinalizer(&u, provisionerconstants.RunnerControllerFinalizer) {
 		l.Info("adding finalizer")
 		if err := r.Update(ctx, &u); err != nil {
 			return ctrl.Result{}, err
@@ -180,7 +180,7 @@ func (r *RunnerReconciler) ensureRunnerIsProvisioned(ctx context.Context, u mayk
 			}
 		}
 
-		return false, r.runNextHookPod(ctx, u, h, runnerconstants.RunnerHookPhaseLabelProvisioningValue, "p")
+		return false, r.runNextHookPod(ctx, u, h, provisionerconstants.RunnerHookPhaseLabelProvisioningValue, "p")
 	}
 	return true, nil
 }
@@ -210,7 +210,7 @@ func (r *RunnerReconciler) ensureRunnerIsCleaned(ctx context.Context, u maykonfl
 			}
 		}
 
-		return false, r.runNextHookPod(ctx, u, h, runnerconstants.RunnerHookPhaseLabelCleanupValue, "c")
+		return false, r.runNextHookPod(ctx, u, h, provisionerconstants.RunnerHookPhaseLabelCleanupValue, "c")
 	}
 	return true, nil
 }
@@ -314,7 +314,7 @@ func (r *RunnerReconciler) finalize(ctx context.Context, u maykonfluxcidevv1alph
 
 	// remove finalizer from runner
 	l.Info("remove finalizer from runner")
-	if controllerutil.RemoveFinalizer(&u, runnerconstants.RunnerControllerFinalizer) {
+	if controllerutil.RemoveFinalizer(&u, provisionerconstants.RunnerControllerFinalizer) {
 		return r.Update(ctx, &u)
 	}
 	return nil
@@ -326,14 +326,14 @@ func (r *RunnerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&maykonfluxcidevv1alpha1.Runner{},
 			builder.WithPredicates(predicate.NewPredicateFuncs(func(obj client.Object) bool {
 				rt, ok := obj.GetLabels()[constants.RunnerTypeLabel]
-				return ok && (rt == runnerconstants.RunnerTypeStatic || rt == runnerconstants.RunnerTypeDynamic)
+				return ok && (rt == provisionerconstants.RunnerTypeStatic || rt == provisionerconstants.RunnerTypeDynamic)
 			})),
 		).
 		Owns(&corev1.Pod{}).
 		Watches(&maykonfluxcidevv1alpha1.Claim{}, handler.Funcs{
 			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[ctrl.Request]) {
 				rr := maykonfluxcidevv1alpha1.RunnerList{}
-				if err := r.List(ctx, &rr, client.MatchingLabels{constants.RunnerTypeLabel: runnerconstants.RunnerTypeStatic}); err != nil {
+				if err := r.List(ctx, &rr, client.MatchingLabels{constants.RunnerTypeLabel: provisionerconstants.RunnerTypeStatic}); err != nil {
 					return
 				}
 
