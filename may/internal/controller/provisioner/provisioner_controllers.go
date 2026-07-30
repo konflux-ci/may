@@ -2,6 +2,7 @@ package provisioner
 
 import (
 	"github.com/go-logr/logr"
+	"github.com/konflux-ci/may/internal/controller/provisioner/runner"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -11,7 +12,7 @@ type reconciler interface {
 
 func SetupWithManager(mgr ctrl.Manager, setupLog logr.Logger, namespace string) error {
 	reconcilers := map[string]reconciler{
-		"Runner":                          &RunnerReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()},
+		"Runner":                          &runner.RunnerReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()},
 		"StaticHost":                      &StaticHostReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()},
 		"RunnerHook":                      &RunnerHookReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()},
 		"DynamicHostReconciler":           &DynamicHostReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()},

@@ -11,8 +11,7 @@ import (
 const (
 	ConditionTypeReady string = "Ready"
 
-	ConditionReasonReady string = "Ready"
-
+	ConditionReasonReady          string = "Ready"
 	ConditionReasonInitializing   string = "Initializing"
 	ConditionReasonCleaning       string = "Cleaning"
 	ConditionReasonStopped        string = "Stopped"
