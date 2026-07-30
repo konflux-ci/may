@@ -160,7 +160,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 			cq := kueuev1beta1.ClusterQueue{}
 			err = k8sClient.Get(ctx, cqt, &cq)
 			Expect(err).To(Or(Not(HaveOccurred()), MatchError(kerrors.IsNotFound, "IsNotFound")))
-			if err != nil {
+			if err == nil {
 				// remove finalizers if any
 				if len(cq.Finalizers) > 0 {
 					cq.Finalizers = []string{}
