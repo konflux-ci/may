@@ -36,7 +36,6 @@ type RunnerSpec struct {
 	InUseBy *ClaimReference `json:"inUseBy,omitempty"`
 
 	// +optional
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	Queue *RunnerQueue `json:"queue"`
 	// Hooks
 	Hooks *RunnerHooks `json:"hooks,omitempty"`

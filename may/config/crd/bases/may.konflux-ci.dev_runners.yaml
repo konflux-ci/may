@@ -17449,9 +17449,6 @@ spec:
                 required:
                 - cohort
                 type: object
-                x-kubernetes-validations:
-                - message: Value is immutable
-                  rule: self == oldSelf
               resources:
                 additionalProperties:
                   anyOf:
