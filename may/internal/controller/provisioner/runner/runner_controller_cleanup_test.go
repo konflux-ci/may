@@ -140,7 +140,7 @@ var _ = Describe("Runner Controller (Cleanup)", Ordered, Serial, func() {
 				r := maykonfluxcidevv1alpha1.Runner{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, &r)).To(Succeed())
 				pk := types.NamespacedName{
-					Name: fmt.Sprintf("p-%s-%s",
+					Name: fmt.Sprintf("c-%s-%s",
 						r.Name,
 						r.Spec.Hooks.Cleanup[0].Name),
 					Namespace: r.Namespace,
