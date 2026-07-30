@@ -158,19 +158,22 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 			By("Cleaning up the created ClusterQueue")
 			cqt := types.NamespacedName{Name: r.Name}
 			cq := kueuev1beta1.ClusterQueue{}
-			Expect(k8sClient.Get(ctx, cqt, &cq)).
-				To(Or(Succeed(), MatchError(kerrors.IsNotFound, "IsNotFound")))
-			// remove finalizers if any
-			if len(cq.Finalizers) > 0 {
-				cq.Finalizers = []string{}
-				Expect(k8sClient.Update(ctx, &cq)).To(Succeed())
-				Expect(k8sClient.Get(ctx, cqt, &cq)).To(Succeed())
+			err = k8sClient.Get(ctx, cqt, &cq)
+			Expect(err).To(Or(Not(HaveOccurred()), MatchError(kerrors.IsNotFound, "IsNotFound")))
+			if err != nil {
+				// remove finalizers if any
+				if len(cq.Finalizers) > 0 {
+					cq.Finalizers = []string{}
+					Expect(k8sClient.Update(ctx, &cq)).To(Succeed())
+					Expect(k8sClient.Get(ctx, cqt, &cq)).To(Succeed())
+				}
+
+				// delete the ClusterQueue
+				Expect(k8sClient.Delete(ctx, &cq)).
+					To(Or(Succeed(), MatchError(kerrors.IsNotFound, "IsNotFound")))
+				Expect(k8sClient.Get(ctx, cqt, &cq)).
+					To(MatchError(kerrors.IsNotFound, "IsNotFound"))
 			}
-			// delete the ClusterQueue
-			Expect(k8sClient.Delete(ctx, &cq)).
-				To(Or(Succeed(), MatchError(kerrors.IsNotFound, "IsNotFound")))
-			Expect(k8sClient.Get(ctx, cqt, &cq)).
-				To(MatchError(kerrors.IsNotFound, "IsNotFound"))
 		})
 
 		Describe("Error Handling", func() {
