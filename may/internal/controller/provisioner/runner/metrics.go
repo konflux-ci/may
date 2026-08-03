@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	runnersInitialized = prometheus.NewCounter(prometheus.CounterOpts{
+	runnerInitialized = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "may",
 		Subsystem: "runner",
 		Name:      "initialized",
