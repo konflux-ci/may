@@ -103,8 +103,9 @@ var _ = Describe("Runner Controller", func() {
 	}
 
 	getRunner := func(ctx context.Context) *maykonfluxcidevv1alpha1.Runner {
+		GinkgoHelper()
 		r := &maykonfluxcidevv1alpha1.Runner{}
-		ExpectWithOffset(1, k8sClient.Get(ctx, typeNamespacedName, r)).Should(Succeed())
+		Expect(k8sClient.Get(ctx, typeNamespacedName, r)).Should(Succeed())
 		return r
 	}
 
@@ -117,13 +118,14 @@ var _ = Describe("Runner Controller", func() {
 	}
 
 	setupCleaningRunner := func(ctx context.Context, phase corev1.PodPhase, msg string, conditionFn func(*maykonfluxcidevv1alpha1.Runner)) {
+		GinkgoHelper()
 		r := newRunner(withCleanupHook)
-		ExpectWithOffset(1, k8sClient.Create(ctx, r)).Should(Succeed())
-		ExpectWithOffset(1, k8sClient.Delete(ctx, r)).Should(Succeed())
-		ExpectWithOffset(1, k8sClient.Get(ctx, typeNamespacedName, r)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, r)).Should(Succeed())
+		Expect(k8sClient.Delete(ctx, r)).Should(Succeed())
+		Expect(k8sClient.Get(ctx, typeNamespacedName, r)).Should(Succeed())
 		conditionFn(r)
 		withCleanupHookStatus(phase, msg)(r)
-		ExpectWithOffset(1, k8sClient.Status().Update(ctx, r)).Should(Succeed())
+		Expect(k8sClient.Status().Update(ctx, r)).Should(Succeed())
 	}
 
 	AfterEach(func(ctx context.Context) {
@@ -143,7 +145,9 @@ var _ = Describe("Runner Controller", func() {
 			setupCleaningRunner(ctx, corev1.PodFailed, "exit code 1", withCleaningCondition)
 
 			By("reconciling the runner")
-			Expect(reconcileRunner(ctx)).Should(Equal(reconcile.Result{}))
+			res, err := reconcileRunner(ctx)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(res).Should(Equal(reconcile.Result{}))
 
 			By("verifying the runner is marked CleaningFailed")
 			updated := getRunner(ctx)
@@ -160,7 +164,9 @@ var _ = Describe("Runner Controller", func() {
 			setupCleaningRunner(ctx, corev1.PodFailed, "exit code 1", withCleaningFailedCondition)
 
 			By("reconciling the runner")
-			Expect(reconcileRunner(ctx)).Should(Equal(reconcile.Result{}))
+			res, err := reconcileRunner(ctx)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(res).Should(Equal(reconcile.Result{}))
 
 			By("verifying the runner stays CleaningFailed")
 			updated := getRunner(ctx)
@@ -177,10 +183,12 @@ var _ = Describe("Runner Controller", func() {
 			setupCleaningRunner(ctx, corev1.PodSucceeded, "", withCleaningCondition)
 
 			By("reconciling the runner")
-			Expect(reconcileRunner(ctx)).Should(Equal(reconcile.Result{}))
+			res, err := reconcileRunner(ctx)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(res).Should(Equal(reconcile.Result{}))
 
 			By("verifying the runner was deleted")
-			Expect(kerrors.IsNotFound(k8sClient.Get(ctx, typeNamespacedName, &maykonfluxcidevv1alpha1.Runner{}))).Should(BeTrue())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &maykonfluxcidevv1alpha1.Runner{})).Should(MatchError(kerrors.IsNotFound, "IsNotFound"))
 		})
 	})
 
@@ -191,7 +199,9 @@ var _ = Describe("Runner Controller", func() {
 				setupCleaningRunner(ctx, phase, "", withCleaningCondition)
 
 				By("reconciling the runner")
-				Expect(reconcileRunner(ctx)).Should(Equal(reconcile.Result{}))
+				res, err := reconcileRunner(ctx)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(res).Should(Equal(reconcile.Result{}))
 
 				By("verifying the runner still has Cleaning condition and finalizer")
 				updated := getRunner(ctx)
@@ -212,7 +222,9 @@ var _ = Describe("Runner Controller", func() {
 				oldValue := testutil.ToFloat64(runnerCleaningFailed)
 
 				By("reconciling the runner")
-				Expect(reconcileRunner(ctx)).Should(Equal(reconcile.Result{}))
+				res, err := reconcileRunner(ctx)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(res).Should(Equal(reconcile.Result{}))
 
 				By("verifying the metric was incremented")
 				Expect(testutil.ToFloat64(runnerCleaningFailed)).Should(Equal(oldValue + 1))
@@ -227,7 +239,9 @@ var _ = Describe("Runner Controller", func() {
 				oldValue := testutil.ToFloat64(runnerCleaningFailed)
 
 				By("reconciling the runner")
-				Expect(reconcileRunner(ctx)).Should(Equal(reconcile.Result{}))
+				res, err := reconcileRunner(ctx)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(res).Should(Equal(reconcile.Result{}))
 
 				By("verifying the metric was not incremented")
 				Expect(testutil.ToFloat64(runnerCleaningFailed)).Should(Equal(oldValue))
@@ -242,7 +256,9 @@ var _ = Describe("Runner Controller", func() {
 				oldValue := testutil.ToFloat64(runnerCleaningFailed)
 
 				By("reconciling the runner")
-				Expect(reconcileRunner(ctx)).Should(Equal(reconcile.Result{}))
+				res, err := reconcileRunner(ctx)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(res).Should(Equal(reconcile.Result{}))
 
 				By("verifying the metric was not incremented")
 				Expect(testutil.ToFloat64(runnerCleaningFailed)).Should(Equal(oldValue))

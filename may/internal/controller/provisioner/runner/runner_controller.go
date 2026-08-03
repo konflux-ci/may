@@ -293,6 +293,7 @@ func (r *RunnerReconciler) ensureClusterQueue(ctx context.Context, u maykonfluxc
 func (r *RunnerReconciler) finalize(ctx context.Context, u maykonfluxcidevv1alpha1.Runner) error {
 	l := log.FromContext(ctx)
 
+	// if the cleanup failed we don't retry it
 	if runner.IsNotReadyWithReason(u, runner.ConditionReasonCleaningFailed) {
 		return nil
 	}
