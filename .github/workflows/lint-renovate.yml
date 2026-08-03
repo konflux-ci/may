@@ -5,6 +5,10 @@ on:
       - main
     paths:
       - renovate.json
+  # until we have a better solution, always run this workflow during
+  # merge_group checks so we can make this check required
+  merge_group:
+    types: [checks_requested]
 
 jobs:
   lint-renovate:
