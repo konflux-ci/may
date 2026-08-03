@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -584,9 +585,11 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 			before := testutil.ToFloat64(runnersInitialized)
 
 			By("reconciling the Runner to trigger initialization")
-			Expect(controllerReconciler.Reconcile(ctx, reconcile.Request{
+			res, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
-			})).Should(Equal(reconcile.Result{}))
+			})
+			Expect(res).Should(Equal(ctrl.Result{}))
+			Expect(err).ShouldNot(HaveOccurred())
 
 			By("verifying the metric was incremented by 1")
 			Expect(testutil.ToFloat64(runnersInitialized)).Should(Equal(before + 1))
