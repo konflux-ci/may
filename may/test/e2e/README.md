@@ -162,18 +162,4 @@ This creates a Kind cluster (`may-test-e2e` by default), builds the may controll
 
 ### Pod errors due to "too many open files"
 
-This is a [known Kind issue](https://kind.sigs.k8s.io/docs/user/known-issues/#pod-errors-due-to-too-many-open-files) caused by running out of inotify resources. The default values of `fs.inotify.max_user_watches` and `fs.inotify.max_user_instances` may be too low for Kind clusters.
-
-To fix temporarily:
-
-```bash
-sudo sysctl fs.inotify.max_user_watches=524288
-sudo sysctl fs.inotify.max_user_instances=512
-```
-
-To make the change persistent, add the following to `/etc/sysctl.conf`:
-
-```
-fs.inotify.max_user_watches = 524288
-fs.inotify.max_user_instances = 512
-```
+This is a [known Kind issue](https://kind.sigs.k8s.io/docs/user/known-issues/#pod-errors-due-to-too-many-open-files) caused by running out of inotify resources.
