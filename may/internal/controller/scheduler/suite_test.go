@@ -102,7 +102,7 @@ var _ = BeforeSuite(func(ctx context.Context) {
 	Expect(k8sCachedClient).ShouldNot(BeNil())
 
 	// derive a context that outlives BeforeSuite for the cache
-	cacheCtx, cacheCancel := context.WithCancel(context.WithoutCancel(ctx))
+	cacheCtx, cacheCancel := context.WithCancel(context.Background())
 
 	// start in background
 	var wg sync.WaitGroup

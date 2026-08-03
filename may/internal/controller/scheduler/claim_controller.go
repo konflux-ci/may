@@ -203,6 +203,9 @@ func (r *ClaimReconciler) ensureRunnersAreDeleted(ctx context.Context, c maykonf
 func (r *ClaimReconciler) ensureRunnerIsDeleted(ctx context.Context, u maykonfluxcidevv1alpha1.Runner) error {
 	if u.DeletionTimestamp.IsZero() {
 		if err := r.Delete(ctx, &u); err != nil {
+			if kerrors.IsNotFound(err) {
+				return nil
+			}
 			return err
 		}
 

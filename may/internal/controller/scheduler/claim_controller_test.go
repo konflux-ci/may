@@ -70,9 +70,9 @@ var _ = Describe("ClaimReconciler", func() {
 
 	waitForCache := func(ctx context.Context, obj client.Object) {
 		GinkgoHelper()
-		Eventually(func() error {
-			return k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), obj)
-		}).Should(Succeed())
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), obj)).Should(Succeed())
+		}).WithContext(ctx).Should(Succeed())
 	}
 
 	reconcileClaim := func(ctx context.Context, c *mayv1alpha1.Claim) (reconcile.Result, error) {
@@ -332,6 +332,36 @@ var _ = Describe("ClaimReconciler", func() {
 				g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), c)).
 					Should(MatchError(kerrors.IsNotFound, "IsNotFound"))
 			}).WithTimeout(15 * time.Second).Should(Succeed())
+		})
+	})
+
+	When("ensureRunnerIsDeleted is called for an already-deleted Runner", func() {
+		It("should not return an error", func(ctx context.Context) {
+			nonExistentRunner := mayv1alpha1.Runner{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "non-existent-runner",
+					Namespace: ns.Name,
+				},
+			}
+			Expect(reconciler.ensureRunnerIsDeleted(ctx, nonExistentRunner)).Should(Succeed())
+		})
+
+		It("should not increment the runnerDeleted metric", func(ctx context.Context) {
+			nonExistentRunner := mayv1alpha1.Runner{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "non-existent-runner-metric",
+					Namespace: ns.Name,
+				},
+			}
+
+			By("recording the metric value before attempting deletion")
+			before := testutil.ToFloat64(runnerDeleted)
+
+			By("calling ensureRunnerIsDeleted on a non-existent runner")
+			Expect(reconciler.ensureRunnerIsDeleted(ctx, nonExistentRunner)).Should(Succeed())
+
+			By("verifying the metric was not incremented")
+			Expect(testutil.ToFloat64(runnerDeleted)).Should(Equal(before))
 		})
 	})
 
