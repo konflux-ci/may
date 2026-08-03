@@ -78,8 +78,8 @@ var _ = BeforeSuite(func(ctx context.Context) {
 
 	// cfg is defined in this file globally.
 	cfg, err = testEnv.Start()
-	Expect(err).NotTo(HaveOccurred())
-	Expect(cfg).NotTo(BeNil())
+	Expect(err).ShouldNot(HaveOccurred())
+	Expect(cfg).ShouldNot(BeNil())
 
 	// setup direct API Server client
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
@@ -124,7 +124,7 @@ var _ = BeforeSuite(func(ctx context.Context) {
 		By("tearing down the test environment")
 		cacheCancel()
 		wg.Wait()
-		Expect(testEnv.Stop()).NotTo(HaveOccurred())
+		Expect(testEnv.Stop()).ShouldNot(HaveOccurred())
 	})
 })
 

@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -89,7 +90,7 @@ func (r *ClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			return ctrl.Result{}, err
 		}
 		if updated {
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: 100 * time.Millisecond}, nil
 		}
 		return ctrl.Result{}, nil
 	}
