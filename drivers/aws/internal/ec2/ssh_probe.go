@@ -25,18 +25,18 @@ import (
 )
 
 const (
-	// SSHPort is the default SSH port probed for host readiness.
-	SSHPort = 22
+	// sshPort is the default SSH port probed for host readiness.
+	sshPort = 22
 
 	sshDialTimeout = 5 * time.Second
 )
 
-// SSHPortOpen checks whether host accepts TCP connections on SSHPort.
+// SSHPortOpen checks whether host accepts TCP connections on sshPort.
 func SSHPortOpen(ctx context.Context, host string) error {
 	dialer := net.Dialer{Timeout: sshDialTimeout}
-	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(SSHPort)))
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(sshPort)))
 	if err != nil {
-		return fmt.Errorf("ssh probe to %s:%d: %w", host, SSHPort, err)
+		return fmt.Errorf("ssh probe to %s:%d: %w", host, sshPort, err)
 	}
 	_ = conn.Close()
 	return nil
