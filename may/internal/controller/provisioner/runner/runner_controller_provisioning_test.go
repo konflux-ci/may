@@ -534,7 +534,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 			Namespace: namespace,
 		}
 
-		BeforeAll(func(ctx context.Context) {
+		BeforeEach(func(ctx context.Context) {
 			By("Create RunnerReconciler")
 			controllerReconciler = &RunnerReconciler{
 				Client: k8sClient,
@@ -561,10 +561,9 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 			Expect(k8sClient.Status().Update(ctx, r)).To(Succeed())
 		})
 
-		AfterAll(func(ctx context.Context) {
+		AfterEach(func(ctx context.Context) {
 			r := &maykonfluxcidevv1alpha1.Runner{}
-			err := k8sClient.Get(ctx, typeNamespacedName, r)
-			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, r)).To(Succeed())
 
 			By("Cleanup the specific resource instance Runner")
 			// remove finalizers if any
@@ -580,19 +579,128 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 				To(MatchError(kerrors.IsNotFound, "IsNotFound"))
 		})
 
-		It("should increment may_runner_initialized when a Runner is Initialized", func(ctx context.Context) {
-			By("recording the metric value before reconciling")
-			before := testutil.ToFloat64(runnersInitialized)
+		When("The Runner has no provisioning hooks", func() {
+			It("should increment may_runner_initialized when a Runner is Initialized", func(ctx context.Context) {
+				By("recording the metric value before reconciling")
+				before := testutil.ToFloat64(runnersInitialized)
 
-			By("reconciling the Runner to trigger initialization")
-			res, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
+				By("reconciling the Runner to trigger initialization")
+				res, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(res).Should(Equal(ctrl.Result{}))
+				Expect(err).ShouldNot(HaveOccurred())
+
+				By("verifying the metric was incremented by 1")
+				Expect(testutil.ToFloat64(runnersInitialized)).Should(Equal(before + 1))
 			})
-			Expect(res).Should(Equal(ctrl.Result{}))
-			Expect(err).ShouldNot(HaveOccurred())
+		})
 
-			By("verifying the metric was incremented by 1")
-			Expect(testutil.ToFloat64(runnersInitialized)).Should(Equal(before + 1))
+		When("The Runner has provisioning hooks", func() {
+			const provisioningHookName = "provisioning-pod-1"
+
+			BeforeAll(func(ctx context.Context) {
+				By("adding a provisioning hook to the runner")
+				r := &maykonfluxcidevv1alpha1.Runner{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, r)).To(Succeed())
+				r.Spec.Hooks = &maykonfluxcidevv1alpha1.RunnerHooks{
+					Provisioning: []maykonfluxcidevv1alpha1.RunnerHookPodTemplateSpec{
+						{
+							Name: provisioningHookName,
+							Template: corev1.PodTemplateSpec{
+								Spec: corev1.PodSpec{
+									RestartPolicy: corev1.RestartPolicyNever,
+									Containers: []corev1.Container{
+										{
+											Name:          "provisioning-container",
+											RestartPolicy: ptr.To(corev1.ContainerRestartPolicyNever),
+											Image:         image,
+											Command:       []string{"exit"},
+											Args:          []string{"0"},
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Update(ctx, r)).To(Succeed())
+			})
+
+			It("should not increment may_runner_initialized when a Runner is Initializing", func(ctx context.Context) {
+				By("recording the metric value before reconciling")
+				before := testutil.ToFloat64(runnersInitialized)
+
+				By("reconciling the Runner to trigger initialization")
+				res, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(res).Should(Equal(ctrl.Result{}))
+				Expect(err).ShouldNot(HaveOccurred())
+
+				By("verifying the metric was incremented by 1")
+				Expect(testutil.ToFloat64(runnersInitialized)).Should(Equal(before))
+			})
+
+			It("should not increment may_runner_initialized when a Provisioning Pod's failing", func(ctx context.Context) {
+				By("recording the metric value before reconciling")
+				before := testutil.ToFloat64(runnersInitialized)
+
+				By("setting the Hook as failed")
+				r := &maykonfluxcidevv1alpha1.Runner{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, r)).To(Succeed())
+				r.Status = maykonfluxcidevv1alpha1.RunnerStatus{
+					HooksStatus: maykonfluxcidevv1alpha1.RunnerHooksStatus{
+						Provisioning: []maykonfluxcidevv1alpha1.RunnerHookStatus{
+							{
+								Hook:  provisioningHookName,
+								Phase: corev1.PodFailed,
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Status().Update(ctx, r)).To(Succeed())
+
+				By("reconciling the Runner to trigger initialization")
+				res, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(res).Should(Equal(ctrl.Result{}))
+				Expect(err).ShouldNot(HaveOccurred())
+
+				By("verifying the metric was not incremented by 1")
+				Expect(testutil.ToFloat64(runnersInitialized)).Should(Equal(before))
+			})
+
+			It("should increment may_runner_initialized when Provisioning Pods succeeded", func(ctx context.Context) {
+				By("recording the metric value before reconciling")
+				before := testutil.ToFloat64(runnersInitialized)
+
+				By("setting the Hook as failed")
+				r := &maykonfluxcidevv1alpha1.Runner{}
+				Expect(k8sClient.Get(ctx, typeNamespacedName, r)).To(Succeed())
+				r.Status = maykonfluxcidevv1alpha1.RunnerStatus{
+					HooksStatus: maykonfluxcidevv1alpha1.RunnerHooksStatus{
+						Provisioning: []maykonfluxcidevv1alpha1.RunnerHookStatus{
+							{
+								Hook:  provisioningHookName,
+								Phase: corev1.PodSucceeded,
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Status().Update(ctx, r)).To(Succeed())
+
+				By("reconciling the Runner to trigger initialization")
+				res, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})
+				Expect(res).Should(Equal(ctrl.Result{}))
+				Expect(err).ShouldNot(HaveOccurred())
+
+				By("verifying the metric was not incremented by 1")
+				Expect(testutil.ToFloat64(runnersInitialized)).Should(Equal(before))
+			})
 		})
 	})
 })
