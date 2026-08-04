@@ -79,12 +79,25 @@ var _ = Describe("validateLaunchConfig", func() {
 	It("requires instance type", func() {
 		Expect(validateLaunchConfig(internalconfig.AWSConfiguration{Ami: "ami-0123456789abcdef0"})).Should(MatchError(ContainSubstring(internalconfig.AnnotationInstanceType)))
 	})
+
+	It("rejects security group name with subnet", func() {
+		err := validateLaunchConfig(internalconfig.AWSConfiguration{
+			Ami:           "ami-0123456789abcdef0",
+			InstanceType:  "m6a.large",
+			SubnetId:      "subnet-0123456789abcdef0",
+			SecurityGroup: "my-sg",
+		})
+		Expect(err).Should(MatchError(And(
+			ContainSubstring(internalconfig.AnnotationSecurityGroup),
+			ContainSubstring(internalconfig.AnnotationSubnetId),
+			ContainSubstring(internalconfig.AnnotationSecurityGroupId),
+		)))
+	})
 })
 
 var _ = Describe("buildRunInstancesInput", func() {
 	It("builds a minimal RunInstances request", func() {
-		input, err := buildRunInstancesInput(validLaunchConfig)
-		Expect(err).ShouldNot(HaveOccurred())
+		input := buildRunInstancesInput(validLaunchConfig)
 		Expect(aws.ToString(input.ImageId)).Should(Equal(validLaunchConfig.Ami))
 		Expect(input.InstanceType).Should(Equal(types.InstanceType(validLaunchConfig.InstanceType)))
 		Expect(aws.ToInt32(input.MinCount)).Should(Equal(int32(1)))
@@ -93,23 +106,21 @@ var _ = Describe("buildRunInstancesInput", func() {
 
 	It("base64-encodes user data", func() {
 		userData := "#!/bin/bash\necho hello"
-		input, err := buildRunInstancesInput(internalconfig.AWSConfiguration{
+		input := buildRunInstancesInput(internalconfig.AWSConfiguration{
 			Ami:          validLaunchConfig.Ami,
 			InstanceType: validLaunchConfig.InstanceType,
 			UserData:     &userData,
 		})
-		Expect(err).ShouldNot(HaveOccurred())
 		Expect(aws.ToString(input.UserData)).Should(Equal(base64.StdEncoding.EncodeToString([]byte(userData))))
 	})
 
 	It("requests a public IP when a subnet is set", func() {
-		input, err := buildRunInstancesInput(internalconfig.AWSConfiguration{
+		input := buildRunInstancesInput(internalconfig.AWSConfiguration{
 			Ami:             validLaunchConfig.Ami,
 			InstanceType:    validLaunchConfig.InstanceType,
 			SubnetId:        "subnet-0123456789abcdef0",
 			SecurityGroupId: "sg-0123456789abcdef0",
 		})
-		Expect(err).ShouldNot(HaveOccurred())
 		Expect(input.NetworkInterfaces).Should(HaveLen(1))
 		Expect(aws.ToString(input.NetworkInterfaces[0].SubnetId)).Should(Equal("subnet-0123456789abcdef0"))
 		Expect(aws.ToBool(input.NetworkInterfaces[0].AssociatePublicIpAddress)).Should(BeTrue())
@@ -118,13 +129,22 @@ var _ = Describe("buildRunInstancesInput", func() {
 	})
 
 	It("sets security groups when no subnet is configured", func() {
-		input, err := buildRunInstancesInput(internalconfig.AWSConfiguration{
+		input := buildRunInstancesInput(internalconfig.AWSConfiguration{
 			Ami:             validLaunchConfig.Ami,
 			InstanceType:    validLaunchConfig.InstanceType,
 			SecurityGroupId: "sg-0123456789abcdef0",
 		})
-		Expect(err).ShouldNot(HaveOccurred())
 		Expect(input.SecurityGroupIds).Should(Equal([]string{"sg-0123456789abcdef0"}))
+		Expect(input.NetworkInterfaces).Should(BeNil())
+	})
+
+	It("sets security group name when no subnet is configured", func() {
+		input := buildRunInstancesInput(internalconfig.AWSConfiguration{
+			Ami:             validLaunchConfig.Ami,
+			InstanceType:    validLaunchConfig.InstanceType,
+			SecurityGroup:   "my-sg",
+		})
+		Expect(input.SecurityGroups).Should(Equal([]string{"my-sg"}))
 		Expect(input.NetworkInterfaces).Should(BeNil())
 	})
 })
@@ -144,19 +164,42 @@ var _ = Describe("LaunchInstance", func() {
 		Expect(called).Should(BeFalse())
 	})
 
+	It("rejects security group name with subnet before calling the API", func(ctx context.Context) {
+		called := false
+		client := newMockClient(&mockEC2API{
+			runInstances: func(context.Context, *awsec2.RunInstancesInput, ...func(*awsec2.Options)) (*awsec2.RunInstancesOutput, error) {
+				called = true
+				return nil, nil
+			},
+		})
+
+		_, err := client.LaunchInstance(ctx, internalconfig.AWSConfiguration{
+			Ami:           validLaunchConfig.Ami,
+			InstanceType:  validLaunchConfig.InstanceType,
+			SubnetId:      "subnet-0123456789abcdef0",
+			SecurityGroup: "my-sg",
+		})
+		Expect(err).Should(MatchError(And(
+			ContainSubstring(internalconfig.AnnotationSecurityGroup),
+			ContainSubstring(internalconfig.AnnotationSubnetId),
+		)))
+		Expect(called).Should(BeFalse())
+	})
+
 	It("returns the instance ID from RunInstances", func(ctx context.Context) {
+		instanceID := "i-launch001"
 		client := newMockClient(&mockEC2API{
 			runInstances: func(_ context.Context, input *awsec2.RunInstancesInput, _ ...func(*awsec2.Options)) (*awsec2.RunInstancesOutput, error) {
 				Expect(aws.ToString(input.ImageId)).Should(Equal(validLaunchConfig.Ami))
 				return &awsec2.RunInstancesOutput{
-					Instances: []types.Instance{{InstanceId: aws.String("i-abc123")}},
+					Instances: []types.Instance{{InstanceId: aws.String(instanceID)}},
 				}, nil
 			},
 		})
 
-		instanceID, err := client.LaunchInstance(ctx, validLaunchConfig)
+		gotInstanceID, err := client.LaunchInstance(ctx, validLaunchConfig)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(instanceID).Should(Equal("i-abc123"))
+		Expect(gotInstanceID).Should(Equal(instanceID))
 	})
 
 	It("wraps RunInstances API errors", func(ctx context.Context) {
@@ -200,17 +243,19 @@ var _ = Describe("LaunchInstance", func() {
 
 var _ = Describe("DescribeInstance", func() {
 	It("returns state and public IP", func(ctx context.Context) {
+		instanceID := "i-describe-running"
+		publicIP := "203.0.113.10"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(_ context.Context, input *awsec2.DescribeInstancesInput, _ ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				Expect(input.InstanceIds).Should(Equal([]string{"i-abc123"}))
-				return instanceOutput("i-abc123", types.InstanceStateNameRunning, "203.0.113.10"), nil
+				Expect(input.InstanceIds).Should(Equal([]string{instanceID}))
+				return instanceOutput(instanceID, types.InstanceStateNameRunning, publicIP), nil
 			},
 		})
 
-		details, err := client.DescribeInstance(ctx, "i-abc123")
+		details, err := client.DescribeInstance(ctx, instanceID)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(details.State).Should(Equal(types.InstanceStateNameRunning))
-		Expect(details.PublicIP).Should(Equal("203.0.113.10"))
+		Expect(details.PublicIP).Should(Equal(publicIP))
 	})
 
 	It("errors when the instance is missing", func(ctx context.Context) {
@@ -225,13 +270,14 @@ var _ = Describe("DescribeInstance", func() {
 	})
 
 	It("wraps DescribeInstances API errors", func(ctx context.Context) {
+		instanceID := "i-describe-api-err"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
 				return nil, errors.New("api unavailable")
 			},
 		})
 
-		_, err := client.DescribeInstance(ctx, "i-abc123")
+		_, err := client.DescribeInstance(ctx, instanceID)
 		Expect(err).Should(MatchError(And(
 			ContainSubstring("DescribeInstances"),
 			ContainSubstring("api unavailable"),
@@ -241,13 +287,14 @@ var _ = Describe("DescribeInstance", func() {
 
 var _ = Describe("InstanceState", func() {
 	It("returns the instance state", func(ctx context.Context) {
+		instanceID := "i-state-pending"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput("i-abc123", types.InstanceStateNamePending, ""), nil
+				return instanceOutput(instanceID, types.InstanceStateNamePending, ""), nil
 			},
 		})
 
-		state, err := client.InstanceState(ctx, "i-abc123")
+		state, err := client.InstanceState(ctx, instanceID)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(state).Should(Equal(types.InstanceStateNamePending))
 	})
@@ -255,77 +302,104 @@ var _ = Describe("InstanceState", func() {
 
 var _ = Describe("SSHReadyOnPublicIP", func() {
 	It("waits while the instance is pending", func(ctx context.Context) {
+		instanceID := "i-ssh-pending"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput("i-abc123", types.InstanceStateNamePending, ""), nil
+				return instanceOutput(instanceID, types.InstanceStateNamePending, ""), nil
 			},
 		})
 
-		publicIP, ready, err := client.SSHReadyOnPublicIP(ctx, "i-abc123")
+		publicIP, ready, err := client.SSHReadyOnPublicIP(ctx, instanceID)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(ready).Should(BeFalse())
 		Expect(publicIP).Should(BeEmpty())
 	})
 
 	It("waits while the instance has no public IP", func(ctx context.Context) {
+		instanceID := "i-ssh-no-public-ip"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput("i-abc123", types.InstanceStateNameRunning, ""), nil
+				return instanceOutput(instanceID, types.InstanceStateNameRunning, ""), nil
 			},
 		})
 
-		publicIP, ready, err := client.SSHReadyOnPublicIP(ctx, "i-abc123")
+		publicIP, ready, err := client.SSHReadyOnPublicIP(ctx, instanceID)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(ready).Should(BeFalse())
 		Expect(publicIP).Should(BeEmpty())
 	})
 
-	It("waits while SSH is not reachable on the public IP", func(ctx context.Context) {
+	It("waits while SSH is not reachable on the public IP", func() {
+		instanceID := "i-ssh-unreachable"
+		// Invalid IP fails the probe quickly without waiting for a TCP timeout.
+		publicIP := "999.999.999.999"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput("i-abc123", types.InstanceStateNameRunning, "203.0.113.10"), nil
+				return instanceOutput(instanceID, types.InstanceStateNameRunning, publicIP), nil
 			},
 		})
 
-		publicIP, ready, err := client.SSHReadyOnPublicIP(ctx, "i-abc123")
+		gotPublicIP, ready, err := client.SSHReadyOnPublicIP(context.Background(), instanceID)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(ready).Should(BeFalse())
-		Expect(publicIP).Should(Equal("203.0.113.10"))
+		Expect(gotPublicIP).Should(Equal(publicIP))
+	})
+
+	It("returns context cancellation from the SSH probe", func() {
+		instanceID := "i-ssh-ctx-cancel"
+		publicIP := "999.999.999.999"
+		client := newMockClient(&mockEC2API{
+			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
+				return instanceOutput(instanceID, types.InstanceStateNameRunning, publicIP), nil
+			},
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		gotPublicIP, ready, err := client.SSHReadyOnPublicIP(ctx, instanceID)
+		Expect(err).Should(MatchError(context.Canceled))
+		Expect(ready).Should(BeFalse())
+		Expect(gotPublicIP).Should(Equal(publicIP))
 	})
 
 	It("errors when the instance terminates before becoming ready", func(ctx context.Context) {
+		instanceID := "i-ssh-terminated"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput("i-abc123", types.InstanceStateNameTerminated, ""), nil
+				return instanceOutput(instanceID, types.InstanceStateNameTerminated, ""), nil
 			},
 		})
 
-		_, ready, err := client.SSHReadyOnPublicIP(ctx, "i-abc123")
+		_, ready, err := client.SSHReadyOnPublicIP(ctx, instanceID)
 		Expect(err).Should(MatchError(ContainSubstring("terminated")))
 		Expect(ready).Should(BeFalse())
 	})
 
 	It("errors when the instance is shutting down before becoming ready", func(ctx context.Context) {
+		instanceID := "i-ssh-shutting-down"
+		publicIP := "203.0.113.11"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput("i-abc123", types.InstanceStateNameShuttingDown, "203.0.113.10"), nil
+				return instanceOutput(instanceID, types.InstanceStateNameShuttingDown, publicIP), nil
 			},
 		})
 
-		publicIP, ready, err := client.SSHReadyOnPublicIP(ctx, "i-abc123")
+		gotPublicIP, ready, err := client.SSHReadyOnPublicIP(ctx, instanceID)
 		Expect(err).Should(MatchError(ContainSubstring("shutting-down")))
 		Expect(ready).Should(BeFalse())
-		Expect(publicIP).Should(Equal("203.0.113.10"))
+		Expect(gotPublicIP).Should(Equal(publicIP))
 	})
 
 	It("returns an error when DescribeInstance fails", func(ctx context.Context) {
+		instanceID := "i-ssh-describe-err"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
 				return nil, errors.New("api unavailable")
 			},
 		})
 
-		_, ready, err := client.SSHReadyOnPublicIP(ctx, "i-abc123")
+		_, ready, err := client.SSHReadyOnPublicIP(ctx, instanceID)
 		Expect(err).Should(MatchError(And(
 			ContainSubstring("DescribeInstances"),
 			ContainSubstring("api unavailable"),
@@ -336,6 +410,7 @@ var _ = Describe("SSHReadyOnPublicIP", func() {
 
 var _ = Describe("TerminateInstance", func() {
 	It("requests instance termination", func(ctx context.Context) {
+		instanceID := "i-terminate001"
 		var gotInstanceID string
 		client := newMockClient(&mockEC2API{
 			terminateInstances: func(_ context.Context, input *awsec2.TerminateInstancesInput, _ ...func(*awsec2.Options)) (*awsec2.TerminateInstancesOutput, error) {
@@ -345,18 +420,19 @@ var _ = Describe("TerminateInstance", func() {
 			},
 		})
 
-		Expect(client.TerminateInstance(ctx, "i-abc123")).Should(Succeed())
-		Expect(gotInstanceID).Should(Equal("i-abc123"))
+		Expect(client.TerminateInstance(ctx, instanceID)).Should(Succeed())
+		Expect(gotInstanceID).Should(Equal(instanceID))
 	})
 
 	It("wraps TerminateInstances API errors", func(ctx context.Context) {
+		instanceID := "i-terminate-api-err"
 		client := newMockClient(&mockEC2API{
 			terminateInstances: func(context.Context, *awsec2.TerminateInstancesInput, ...func(*awsec2.Options)) (*awsec2.TerminateInstancesOutput, error) {
 				return nil, errors.New("api unavailable")
 			},
 		})
 
-		err := client.TerminateInstance(ctx, "i-abc123")
+		err := client.TerminateInstance(ctx, instanceID)
 		Expect(err).Should(MatchError(And(
 			ContainSubstring("TerminateInstances"),
 			ContainSubstring("api unavailable"),

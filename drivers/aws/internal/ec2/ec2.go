@@ -44,10 +44,7 @@ func (c *Client) LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfi
 		return "", err
 	}
 
-	input, err := buildRunInstancesInput(cfg)
-	if err != nil {
-		return "", err
-	}
+	input := buildRunInstancesInput(cfg)
 
 	out, err := c.api.RunInstances(ctx, input)
 	if err != nil {
@@ -120,6 +117,9 @@ func (c *Client) SSHReadyOnPublicIP(ctx context.Context, instanceID string) (pub
 		return "", false, nil
 	}
 	if err := SSHPortOpen(ctx, details.PublicIP); err != nil {
+		if ctx.Err() != nil {
+			return details.PublicIP, false, ctx.Err()
+		}
 		return details.PublicIP, false, nil
 	}
 
@@ -144,10 +144,17 @@ func validateLaunchConfig(cfg internalconfig.AWSConfiguration) error {
 	if cfg.InstanceType == "" {
 		return fmt.Errorf("missing required annotation %q", internalconfig.AnnotationInstanceType)
 	}
+	if cfg.SubnetId != "" && cfg.SecurityGroup != "" && cfg.SecurityGroupId == "" {
+		return fmt.Errorf("%q (security group name) cannot be used with %q; set %q instead",
+			internalconfig.AnnotationSecurityGroup,
+			internalconfig.AnnotationSubnetId,
+			internalconfig.AnnotationSecurityGroupId,
+		)
+	}
 	return nil
 }
 
-func buildRunInstancesInput(cfg internalconfig.AWSConfiguration) (*awsec2.RunInstancesInput, error) {
+func buildRunInstancesInput(cfg internalconfig.AWSConfiguration) *awsec2.RunInstancesInput {
 	input := &awsec2.RunInstancesInput{
 		ImageId:      aws.String(cfg.Ami),
 		InstanceType: types.InstanceType(cfg.InstanceType),
@@ -230,11 +237,9 @@ func buildRunInstancesInput(cfg internalconfig.AWSConfiguration) (*awsec2.RunIns
 		}
 		if cfg.SecurityGroupId != "" {
 			ni.Groups = []string{cfg.SecurityGroupId}
-		} else if cfg.SecurityGroup != "" {
-			ni.Groups = []string{cfg.SecurityGroup}
 		}
 		input.NetworkInterfaces = []types.InstanceNetworkInterfaceSpecification{ni}
-		return input, nil
+		return input
 	}
 
 	switch {
@@ -244,5 +249,5 @@ func buildRunInstancesInput(cfg internalconfig.AWSConfiguration) (*awsec2.RunIns
 		input.SecurityGroups = []string{cfg.SecurityGroup}
 	}
 
-	return input, nil
+	return input
 }

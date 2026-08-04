@@ -18,21 +18,25 @@ package ec2
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("SSHPortOpen", func() {
-	DescribeTable("Testing the ability to access a remote AWS ec2 instance via SSH",
-		func(testInstanceIP string) {
-			err := SSHPortOpen(context.Background(), testInstanceIP)
+	DescribeTable("returns a wrapped error when the SSH port is unreachable",
+		func(host string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+			defer cancel()
+
+			err := SSHPortOpen(ctx, host)
 			Expect(err).Should(MatchError(And(
 				ContainSubstring("ssh probe to"),
 				ContainSubstring(":22"),
 			)))
 		},
-		Entry("Negative test - no such IP address", "192.168.4.231"),
-		Entry("Negative test - not an IP address", "Not an IP address"),
+		Entry("invalid IP address", "999.999.999.999"),
+		Entry("invalid hostname", "not-a-host"),
 	)
 })
