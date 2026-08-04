@@ -596,10 +596,10 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 			})
 		})
 
-		When("The Runner has provisioning hooks", func() {
+		When("The Initializing Runner has provisioning hooks", Serial, func() {
 			const provisioningHookName = "provisioning-pod-1"
 
-			BeforeAll(func(ctx context.Context) {
+			BeforeEach(func(ctx context.Context) {
 				By("adding a provisioning hook to the runner")
 				r := &maykonfluxcidevv1alpha1.Runner{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, r)).To(Succeed())
@@ -625,6 +625,10 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 					},
 				}
 				Expect(k8sClient.Update(ctx, r)).To(Succeed())
+
+				By("setting runner status to Initializing")
+				runner.SetNotReadyInitializing(r)
+				Expect(k8sClient.Status().Update(ctx, r)).To(Succeed())
 			})
 
 			It("should not increment may_runner_initialized when a Runner is Initializing", func(ctx context.Context) {
@@ -649,13 +653,11 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 				By("setting the Hook as failed")
 				r := &maykonfluxcidevv1alpha1.Runner{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, r)).To(Succeed())
-				r.Status = maykonfluxcidevv1alpha1.RunnerStatus{
-					HooksStatus: maykonfluxcidevv1alpha1.RunnerHooksStatus{
-						Provisioning: []maykonfluxcidevv1alpha1.RunnerHookStatus{
-							{
-								Hook:  provisioningHookName,
-								Phase: corev1.PodFailed,
-							},
+				r.Status.HooksStatus = maykonfluxcidevv1alpha1.RunnerHooksStatus{
+					Provisioning: []maykonfluxcidevv1alpha1.RunnerHookStatus{
+						{
+							Hook:  provisioningHookName,
+							Phase: corev1.PodFailed,
 						},
 					},
 				}
@@ -679,18 +681,15 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 				By("setting the Hook as failed")
 				r := &maykonfluxcidevv1alpha1.Runner{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, r)).To(Succeed())
-				r.Status = maykonfluxcidevv1alpha1.RunnerStatus{
-					HooksStatus: maykonfluxcidevv1alpha1.RunnerHooksStatus{
-						Provisioning: []maykonfluxcidevv1alpha1.RunnerHookStatus{
-							{
-								Hook:  provisioningHookName,
-								Phase: corev1.PodSucceeded,
-							},
+				r.Status.HooksStatus = maykonfluxcidevv1alpha1.RunnerHooksStatus{
+					Provisioning: []maykonfluxcidevv1alpha1.RunnerHookStatus{
+						{
+							Hook:  provisioningHookName,
+							Phase: corev1.PodSucceeded,
 						},
 					},
 				}
 				Expect(k8sClient.Status().Update(ctx, r)).To(Succeed())
-
 				By("reconciling the Runner to trigger initialization")
 				res, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: typeNamespacedName,
@@ -698,8 +697,8 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 				Expect(res).Should(Equal(ctrl.Result{}))
 				Expect(err).ShouldNot(HaveOccurred())
 
-				By("verifying the metric was not incremented by 1")
-				Expect(testutil.ToFloat64(runnerInitialized)).Should(Equal(before))
+				By("verifying the metric was incremented by 1")
+				Expect(testutil.ToFloat64(runnerInitialized)).Should(Equal(before + 1))
 			})
 		})
 	})
