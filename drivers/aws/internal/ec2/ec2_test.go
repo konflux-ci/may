@@ -472,7 +472,10 @@ var _ = Describe("SSHReadyOnPublicIP", func() {
 		})
 
 		gotPublicIP, ready, err := client.SSHReadyOnPublicIP(ctx, instanceID)
-		Expect(err).Should(MatchError(ContainSubstring("stopped")))
+		Expect(err).Should(MatchError(And(
+			ContainSubstring("stopped"),
+			ContainSubstring("not running"),
+		)))
 		Expect(ready).Should(BeFalse())
 		Expect(gotPublicIP).Should(Equal(publicIP))
 	})
@@ -486,7 +489,10 @@ var _ = Describe("SSHReadyOnPublicIP", func() {
 		})
 
 		_, ready, err := client.SSHReadyOnPublicIP(ctx, instanceID)
-		Expect(err).Should(MatchError(ContainSubstring("stopping")))
+		Expect(err).Should(MatchError(And(
+			ContainSubstring("stopping"),
+			ContainSubstring("not running"),
+		)))
 		Expect(ready).Should(BeFalse())
 	})
 

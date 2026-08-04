@@ -109,9 +109,10 @@ func (c *Client) SSHReadyOnPublicIP(ctx context.Context, instanceID string) (pub
 	}
 
 	switch details.State {
-	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated,
-		types.InstanceStateNameStopping, types.InstanceStateNameStopped:
+	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated:
 		return details.PublicIP, false, fmt.Errorf("EC2 instance %s is %s before becoming ready", instanceID, details.State)
+	case types.InstanceStateNameStopping, types.InstanceStateNameStopped:
+		return details.PublicIP, false, fmt.Errorf("EC2 instance %s is %s and is not running", instanceID, details.State)
 	case types.InstanceStateNameRunning:
 		// continue below
 	default:
