@@ -22,6 +22,13 @@ import (
 )
 
 var (
+	runnerCleaningFailed = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "may",
+		Subsystem: "runner",
+		Name:      "cleaning_failed",
+		Help:      "Total number of runners whose cleanup hooks failed",
+	})
+
 	runnerInitialized = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "may",
 		Subsystem: "runner",
@@ -31,5 +38,5 @@ var (
 )
 
 func init() {
-	metrics.Registry.MustRegister(runnersInitialized)
+	metrics.Registry.MustRegister(runnerCleaningFailed, runnerInitialized)
 }
