@@ -142,7 +142,7 @@ var _ = Describe("buildRunInstancesInput", func() {
 		Expect(input.SubnetId).Should(BeNil())
 	})
 
-	It("does not request a public IP when strict public address is disabled", func() {
+	It("does not override subnet public IP defaults when strict public address is disabled", func() {
 		input := buildRunInstancesInput(internalconfig.AWSConfiguration{
 			Ami:                 validLaunchConfig.Ami,
 			InstanceType:        validLaunchConfig.InstanceType,
@@ -151,7 +151,7 @@ var _ = Describe("buildRunInstancesInput", func() {
 			StrictPublicAddress: false,
 		})
 		Expect(input.NetworkInterfaces).Should(HaveLen(1))
-		Expect(aws.ToBool(input.NetworkInterfaces[0].AssociatePublicIpAddress)).Should(BeFalse())
+		Expect(input.NetworkInterfaces[0].AssociatePublicIpAddress).Should(BeNil())
 	})
 
 	It("sets security groups when no subnet is configured", func() {

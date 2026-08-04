@@ -221,7 +221,8 @@ func buildRunInstancesInput(cfg internalconfig.AWSConfiguration) *awsec2.RunInst
 
 	if cfg.Disk > 0 || cfg.Throughput != nil || cfg.Iops != nil {
 		ebs := &types.EbsBlockDevice{
-			VolumeType: types.VolumeTypeGp3,
+			VolumeType:          types.VolumeTypeGp3,
+			DeleteOnTermination: aws.Bool(true),
 		}
 		if cfg.Disk > 0 {
 			ebs.VolumeSize = aws.Int32(cfg.Disk)
@@ -234,7 +235,7 @@ func buildRunInstancesInput(cfg internalconfig.AWSConfiguration) *awsec2.RunInst
 		}
 		input.BlockDeviceMappings = []types.BlockDeviceMapping{
 			{
-				DeviceName: aws.String("/dev/xvda"),
+				DeviceName: aws.String("/dev/sda1"),
 				Ebs:        ebs,
 			},
 		}
@@ -242,9 +243,11 @@ func buildRunInstancesInput(cfg internalconfig.AWSConfiguration) *awsec2.RunInst
 
 	if cfg.SubnetId != "" {
 		ni := types.InstanceNetworkInterfaceSpecification{
-			DeviceIndex:              aws.Int32(0),
-			SubnetId:                 aws.String(cfg.SubnetId),
-			AssociatePublicIpAddress: aws.Bool(cfg.StrictPublicAddress),
+			DeviceIndex: aws.Int32(0),
+			SubnetId:    aws.String(cfg.SubnetId),
+		}
+		if cfg.StrictPublicAddress {
+			ni.AssociatePublicIpAddress = aws.Bool(true)
 		}
 		if cfg.SecurityGroupId != "" {
 			ni.Groups = []string{cfg.SecurityGroupId}
