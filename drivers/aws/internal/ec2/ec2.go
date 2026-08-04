@@ -40,7 +40,7 @@ func NewClient(c *awsec2.Client) *Client {
 
 // LaunchInstance starts a single EC2 instance from cfg and returns its instance ID.
 func (c *Client) LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfiguration) (string, error) {
-	if err := validateLaunchConfig(cfg); err != nil {
+	if err := validateAWSConfiguration(cfg); err != nil {
 		return "", err
 	}
 
@@ -142,12 +142,18 @@ func (c *Client) TerminateInstance(ctx context.Context, instanceID string) error
 	return nil
 }
 
-func validateLaunchConfig(cfg internalconfig.AWSConfiguration) error {
+func validateAWSConfiguration(cfg internalconfig.AWSConfiguration) error {
 	if cfg.Ami == "" {
 		return fmt.Errorf("missing required annotation %q", internalconfig.AnnotationAmi)
 	}
 	if cfg.InstanceType == "" {
 		return fmt.Errorf("missing required annotation %q", internalconfig.AnnotationInstanceType)
+	}
+	if cfg.SecurityGroup != "" && cfg.SecurityGroupId != "" {
+		return fmt.Errorf("cannot set both %q and %q",
+			internalconfig.AnnotationSecurityGroup,
+			internalconfig.AnnotationSecurityGroupId,
+		)
 	}
 	if cfg.SubnetId != "" && cfg.SecurityGroup != "" && cfg.SecurityGroupId == "" {
 		return fmt.Errorf("%q (security group name) cannot be used with %q; set %q instead",
@@ -238,7 +244,7 @@ func buildRunInstancesInput(cfg internalconfig.AWSConfiguration) *awsec2.RunInst
 		ni := types.InstanceNetworkInterfaceSpecification{
 			DeviceIndex:              aws.Int32(0),
 			SubnetId:                 aws.String(cfg.SubnetId),
-			AssociatePublicIpAddress: aws.Bool(true),
+			AssociatePublicIpAddress: aws.Bool(cfg.StrictPublicAddress),
 		}
 		if cfg.SecurityGroupId != "" {
 			ni.Groups = []string{cfg.SecurityGroupId}

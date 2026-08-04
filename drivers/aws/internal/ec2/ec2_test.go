@@ -71,17 +71,30 @@ var validLaunchConfig = internalconfig.AWSConfiguration{
 	InstanceType: "m6a.large",
 }
 
-var _ = Describe("validateLaunchConfig", func() {
+var _ = Describe("validateAWSConfiguration", func() {
 	It("requires ami", func() {
-		Expect(validateLaunchConfig(internalconfig.AWSConfiguration{InstanceType: "m6a.large"})).Should(MatchError(ContainSubstring(internalconfig.AnnotationAmi)))
+		Expect(validateAWSConfiguration(internalconfig.AWSConfiguration{InstanceType: "m6a.large"})).Should(MatchError(ContainSubstring(internalconfig.AnnotationAmi)))
 	})
 
 	It("requires instance type", func() {
-		Expect(validateLaunchConfig(internalconfig.AWSConfiguration{Ami: "ami-0123456789abcdef0"})).Should(MatchError(ContainSubstring(internalconfig.AnnotationInstanceType)))
+		Expect(validateAWSConfiguration(internalconfig.AWSConfiguration{Ami: "ami-0123456789abcdef0"})).Should(MatchError(ContainSubstring(internalconfig.AnnotationInstanceType)))
+	})
+
+	It("rejects both security group name and ID", func() {
+		err := validateAWSConfiguration(internalconfig.AWSConfiguration{
+			Ami:             "ami-0123456789abcdef0",
+			InstanceType:    "m6a.large",
+			SecurityGroup:   "my-sg",
+			SecurityGroupId: "sg-0123456789abcdef0",
+		})
+		Expect(err).Should(MatchError(And(
+			ContainSubstring(internalconfig.AnnotationSecurityGroup),
+			ContainSubstring(internalconfig.AnnotationSecurityGroupId),
+		)))
 	})
 
 	It("rejects security group name with subnet", func() {
-		err := validateLaunchConfig(internalconfig.AWSConfiguration{
+		err := validateAWSConfiguration(internalconfig.AWSConfiguration{
 			Ami:           "ami-0123456789abcdef0",
 			InstanceType:  "m6a.large",
 			SubnetId:      "subnet-0123456789abcdef0",
@@ -114,18 +127,31 @@ var _ = Describe("buildRunInstancesInput", func() {
 		Expect(aws.ToString(input.UserData)).Should(Equal(base64.StdEncoding.EncodeToString([]byte(userData))))
 	})
 
-	It("requests a public IP when a subnet is set", func() {
+	It("requests a public IP when a subnet is set and strict public address is enabled", func() {
 		input := buildRunInstancesInput(internalconfig.AWSConfiguration{
-			Ami:             validLaunchConfig.Ami,
-			InstanceType:    validLaunchConfig.InstanceType,
-			SubnetId:        "subnet-0123456789abcdef0",
-			SecurityGroupId: "sg-0123456789abcdef0",
+			Ami:                 validLaunchConfig.Ami,
+			InstanceType:        validLaunchConfig.InstanceType,
+			SubnetId:            "subnet-0123456789abcdef0",
+			SecurityGroupId:     "sg-0123456789abcdef0",
+			StrictPublicAddress: true,
 		})
 		Expect(input.NetworkInterfaces).Should(HaveLen(1))
 		Expect(aws.ToString(input.NetworkInterfaces[0].SubnetId)).Should(Equal("subnet-0123456789abcdef0"))
 		Expect(aws.ToBool(input.NetworkInterfaces[0].AssociatePublicIpAddress)).Should(BeTrue())
 		Expect(input.NetworkInterfaces[0].Groups).Should(Equal([]string{"sg-0123456789abcdef0"}))
 		Expect(input.SubnetId).Should(BeNil())
+	})
+
+	It("does not request a public IP when strict public address is disabled", func() {
+		input := buildRunInstancesInput(internalconfig.AWSConfiguration{
+			Ami:                 validLaunchConfig.Ami,
+			InstanceType:        validLaunchConfig.InstanceType,
+			SubnetId:            "subnet-0123456789abcdef0",
+			SecurityGroupId:     "sg-0123456789abcdef0",
+			StrictPublicAddress: false,
+		})
+		Expect(input.NetworkInterfaces).Should(HaveLen(1))
+		Expect(aws.ToBool(input.NetworkInterfaces[0].AssociatePublicIpAddress)).Should(BeFalse())
 	})
 
 	It("sets security groups when no subnet is configured", func() {
@@ -182,6 +208,29 @@ var _ = Describe("LaunchInstance", func() {
 		Expect(err).Should(MatchError(And(
 			ContainSubstring(internalconfig.AnnotationSecurityGroup),
 			ContainSubstring(internalconfig.AnnotationSubnetId),
+		)))
+		Expect(called).Should(BeFalse())
+	})
+
+	It("rejects conflicting security groups before calling the API", func(ctx context.Context) {
+		called := false
+		client := newMockClient(&mockEC2API{
+			runInstances: func(context.Context, *awsec2.RunInstancesInput, ...func(*awsec2.Options)) (*awsec2.RunInstancesOutput, error) {
+				called = true
+				return nil, nil
+			},
+		})
+
+		_, err := client.LaunchInstance(ctx, internalconfig.AWSConfiguration{
+			Ami:             validLaunchConfig.Ami,
+			InstanceType:    validLaunchConfig.InstanceType,
+			SubnetId:        "subnet-0123456789abcdef0",
+			SecurityGroup:   "my-sg",
+			SecurityGroupId: "sg-0123456789abcdef0",
+		})
+		Expect(err).Should(MatchError(And(
+			ContainSubstring(internalconfig.AnnotationSecurityGroup),
+			ContainSubstring(internalconfig.AnnotationSecurityGroupId),
 		)))
 		Expect(called).Should(BeFalse())
 	})
