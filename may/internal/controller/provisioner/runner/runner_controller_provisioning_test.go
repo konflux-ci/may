@@ -638,7 +638,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 				Expect(res).Should(Equal(ctrl.Result{}))
 				Expect(err).ShouldNot(HaveOccurred())
 
-				By("verifying the metric was incremented by 1")
+				By("verifying the metric was not incremented by 1")
 				Expect(testutil.ToFloat64(runnerInitialized)).Should(Equal(before))
 			})
 
