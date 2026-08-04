@@ -266,7 +266,29 @@ var _ = Describe("DescribeInstance", func() {
 		})
 
 		_, err := client.DescribeInstance(ctx, "i-missing")
-		Expect(err).Should(MatchError(ContainSubstring(`instance "i-missing" not found`)))
+		Expect(err).Should(MatchError(And(
+			ContainSubstring("DescribeInstances"),
+			ContainSubstring(`instance "i-missing" not found`),
+		)))
+	})
+
+	It("returns empty state when the instance state is missing", func(ctx context.Context) {
+		instanceID := "i-describe-nil-state"
+		client := newMockClient(&mockEC2API{
+			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
+				return &awsec2.DescribeInstancesOutput{
+					Reservations: []types.Reservation{{
+						Instances: []types.Instance{{
+							InstanceId: aws.String(instanceID),
+						}},
+					}},
+				}, nil
+			},
+		})
+
+		details, err := client.DescribeInstance(ctx, instanceID)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(details.State).Should(BeEmpty())
 	})
 
 	It("wraps DescribeInstances API errors", func(ctx context.Context) {
@@ -389,6 +411,34 @@ var _ = Describe("SSHReadyOnPublicIP", func() {
 		Expect(err).Should(MatchError(ContainSubstring("shutting-down")))
 		Expect(ready).Should(BeFalse())
 		Expect(gotPublicIP).Should(Equal(publicIP))
+	})
+
+	It("errors when the instance is stopped before becoming ready", func(ctx context.Context) {
+		instanceID := "i-ssh-stopped"
+		publicIP := "203.0.113.12"
+		client := newMockClient(&mockEC2API{
+			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
+				return instanceOutput(instanceID, types.InstanceStateNameStopped, publicIP), nil
+			},
+		})
+
+		gotPublicIP, ready, err := client.SSHReadyOnPublicIP(ctx, instanceID)
+		Expect(err).Should(MatchError(ContainSubstring("stopped")))
+		Expect(ready).Should(BeFalse())
+		Expect(gotPublicIP).Should(Equal(publicIP))
+	})
+
+	It("errors when the instance is stopping before becoming ready", func(ctx context.Context) {
+		instanceID := "i-ssh-stopping"
+		client := newMockClient(&mockEC2API{
+			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
+				return instanceOutput(instanceID, types.InstanceStateNameStopping, ""), nil
+			},
+		})
+
+		_, ready, err := client.SSHReadyOnPublicIP(ctx, instanceID)
+		Expect(err).Should(MatchError(ContainSubstring("stopping")))
+		Expect(ready).Should(BeFalse())
 	})
 
 	It("returns an error when DescribeInstance fails", func(ctx context.Context) {

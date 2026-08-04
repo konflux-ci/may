@@ -75,17 +75,21 @@ func (c *Client) DescribeInstance(ctx context.Context, instanceID string) (Insta
 
 	for _, reservation := range out.Reservations {
 		for _, instance := range reservation.Instances {
-			if instance.InstanceId != nil && aws.ToString(instance.InstanceId) == instanceID {
-				details := InstanceDetails{State: instance.State.Name}
-				if instance.PublicIpAddress != nil {
-					details.PublicIP = aws.ToString(instance.PublicIpAddress)
-				}
-				return details, nil
+			if instance.InstanceId == nil || aws.ToString(instance.InstanceId) != instanceID {
+				continue
 			}
+			details := InstanceDetails{}
+			if instance.State != nil {
+				details.State = instance.State.Name
+			}
+			if instance.PublicIpAddress != nil {
+				details.PublicIP = aws.ToString(instance.PublicIpAddress)
+			}
+			return details, nil
 		}
 	}
 
-	return InstanceDetails{}, fmt.Errorf("instance %q not found", instanceID)
+	return InstanceDetails{}, fmt.Errorf("DescribeInstances: instance %q not found", instanceID)
 }
 
 // InstanceState returns the current EC2 state for instanceID.
@@ -105,7 +109,8 @@ func (c *Client) SSHReadyOnPublicIP(ctx context.Context, instanceID string) (pub
 	}
 
 	switch details.State {
-	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated:
+	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated,
+		types.InstanceStateNameStopping, types.InstanceStateNameStopped:
 		return details.PublicIP, false, fmt.Errorf("EC2 instance %s is %s before becoming ready", instanceID, details.State)
 	case types.InstanceStateNameRunning:
 		// continue below
