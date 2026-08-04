@@ -582,7 +582,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 		When("The Runner has no provisioning hooks", func() {
 			It("should increment may_runner_initialized when a Runner is Initialized", func(ctx context.Context) {
 				By("recording the metric value before reconciling")
-				before := testutil.ToFloat64(runnersInitialized)
+				before := testutil.ToFloat64(runnerInitialized)
 
 				By("reconciling the Runner to trigger initialization")
 				res, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -592,7 +592,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 				Expect(err).ShouldNot(HaveOccurred())
 
 				By("verifying the metric was incremented by 1")
-				Expect(testutil.ToFloat64(runnersInitialized)).Should(Equal(before + 1))
+				Expect(testutil.ToFloat64(runnerInitialized)).Should(Equal(before + 1))
 			})
 		})
 
@@ -629,7 +629,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 
 			It("should not increment may_runner_initialized when a Runner is Initializing", func(ctx context.Context) {
 				By("recording the metric value before reconciling")
-				before := testutil.ToFloat64(runnersInitialized)
+				before := testutil.ToFloat64(runnerInitialized)
 
 				By("reconciling the Runner to trigger initialization")
 				res, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -639,12 +639,12 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 				Expect(err).ShouldNot(HaveOccurred())
 
 				By("verifying the metric was incremented by 1")
-				Expect(testutil.ToFloat64(runnersInitialized)).Should(Equal(before))
+				Expect(testutil.ToFloat64(runnerInitialized)).Should(Equal(before))
 			})
 
 			It("should not increment may_runner_initialized when a Provisioning Pod's failing", func(ctx context.Context) {
 				By("recording the metric value before reconciling")
-				before := testutil.ToFloat64(runnersInitialized)
+				before := testutil.ToFloat64(runnerInitialized)
 
 				By("setting the Hook as failed")
 				r := &maykonfluxcidevv1alpha1.Runner{}
@@ -669,12 +669,12 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 				Expect(err).ShouldNot(HaveOccurred())
 
 				By("verifying the metric was not incremented by 1")
-				Expect(testutil.ToFloat64(runnersInitialized)).Should(Equal(before))
+				Expect(testutil.ToFloat64(runnerInitialized)).Should(Equal(before))
 			})
 
 			It("should increment may_runner_initialized when Provisioning Pods succeeded", func(ctx context.Context) {
 				By("recording the metric value before reconciling")
-				before := testutil.ToFloat64(runnersInitialized)
+				before := testutil.ToFloat64(runnerInitialized)
 
 				By("setting the Hook as failed")
 				r := &maykonfluxcidevv1alpha1.Runner{}
@@ -699,7 +699,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 				Expect(err).ShouldNot(HaveOccurred())
 
 				By("verifying the metric was not incremented by 1")
-				Expect(testutil.ToFloat64(runnersInitialized)).Should(Equal(before))
+				Expect(testutil.ToFloat64(runnerInitialized)).Should(Equal(before))
 			})
 		})
 	})

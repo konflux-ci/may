@@ -111,7 +111,7 @@ func (r *RunnerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{}, err
 		}
 
-		runnersInitialized.Inc()
+		runnerInitialized.Inc()
 		return ctrl.Result{}, nil
 
 	case runner.IsReady(u):
