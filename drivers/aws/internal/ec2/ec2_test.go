@@ -356,21 +356,6 @@ var _ = Describe("DescribeInstance", func() {
 	})
 })
 
-var _ = Describe("InstanceState", func() {
-	It("returns the instance state", func(ctx context.Context) {
-		instanceID := "i-state-pending"
-		client := newMockClient(&mockEC2API{
-			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput(instanceID, types.InstanceStateNamePending, ""), nil
-			},
-		})
-
-		state, err := client.InstanceState(ctx, instanceID)
-		Expect(err).ShouldNot(HaveOccurred())
-		Expect(state).Should(Equal(types.InstanceStateNamePending))
-	})
-})
-
 var _ = Describe("SSHReadyOnPublicIP", func() {
 	It("waits while the instance is pending", func(ctx context.Context) {
 		instanceID := "i-ssh-pending"

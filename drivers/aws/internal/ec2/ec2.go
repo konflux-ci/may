@@ -92,15 +92,6 @@ func (c *Client) DescribeInstance(ctx context.Context, instanceID string) (Insta
 	return InstanceDetails{}, fmt.Errorf("DescribeInstances: instance %q not found", instanceID)
 }
 
-// InstanceState returns the current EC2 state for instanceID.
-func (c *Client) InstanceState(ctx context.Context, instanceID string) (types.InstanceStateName, error) {
-	details, err := c.DescribeInstance(ctx, instanceID)
-	if err != nil {
-		return "", err
-	}
-	return details.State, nil
-}
-
 // SSHReadyOnPublicIP reports whether instanceID is running, has a public IP, and accepts SSH.
 func (c *Client) SSHReadyOnPublicIP(ctx context.Context, instanceID string) (publicIP string, ready bool, err error) {
 	details, err := c.DescribeInstance(ctx, instanceID)
