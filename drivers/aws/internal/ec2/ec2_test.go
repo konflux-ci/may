@@ -140,9 +140,9 @@ var _ = Describe("buildRunInstancesInput", func() {
 
 	It("sets security group name when no subnet is configured", func() {
 		input := buildRunInstancesInput(internalconfig.AWSConfiguration{
-			Ami:             validLaunchConfig.Ami,
-			InstanceType:    validLaunchConfig.InstanceType,
-			SecurityGroup:   "my-sg",
+			Ami:           validLaunchConfig.Ami,
+			InstanceType:  validLaunchConfig.InstanceType,
+			SecurityGroup: "my-sg",
 		})
 		Expect(input.SecurityGroups).Should(Equal([]string{"my-sg"}))
 		Expect(input.NetworkInterfaces).Should(BeNil())
