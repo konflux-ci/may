@@ -678,7 +678,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 				By("recording the metric value before reconciling")
 				before := testutil.ToFloat64(runnerInitialized)
 
-				By("setting the Hook as Suceeded")
+				By("setting the Hook as Succeeded")
 				r := &maykonfluxcidevv1alpha1.Runner{}
 				Expect(k8sClient.Get(ctx, typeNamespacedName, r)).To(Succeed())
 				r.Status.HooksStatus = maykonfluxcidevv1alpha1.RunnerHooksStatus{
