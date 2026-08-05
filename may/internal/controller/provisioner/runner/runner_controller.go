@@ -107,7 +107,12 @@ func (r *RunnerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 		runner.SetReady(&u)
 		l.Info("setting ready", "status", u.Status)
-		return ctrl.Result{}, r.Status().Update(ctx, &u)
+		if err := r.Status().Update(ctx, &u); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		runnerInitialized.Inc()
+		return ctrl.Result{}, nil
 
 	case runner.IsReady(u):
 		// create ClusterQueue

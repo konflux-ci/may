@@ -21,13 +21,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
-var runnerCleaningFailed = prometheus.NewCounter(prometheus.CounterOpts{
-	Namespace: "may",
-	Subsystem: "runner",
-	Name:      "cleaning_failed",
-	Help:      "Total number of runners whose cleanup hooks failed",
-})
+var (
+	runnerCleaningFailed = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "may",
+		Subsystem: "runner",
+		Name:      "cleaning_failed",
+		Help:      "Total number of runners whose cleanup hooks failed",
+	})
+
+	runnerInitialized = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "may",
+		Subsystem: "runner",
+		Name:      "initialized",
+		Help:      "Total number of runners initialized successfully",
+	})
+)
 
 func init() {
-	metrics.Registry.MustRegister(runnerCleaningFailed)
+	metrics.Registry.MustRegister(runnerCleaningFailed, runnerInitialized)
 }
