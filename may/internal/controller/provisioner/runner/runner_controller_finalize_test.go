@@ -70,16 +70,17 @@ var _ = Describe("Runner Controller (Finalize)", func() {
 	}
 
 	withCleanupHook := func(r *maykonfluxcidevv1alpha1.Runner) {
-		r.Spec.Hooks = &maykonfluxcidevv1alpha1.RunnerHooks{
-			Cleanup: []maykonfluxcidevv1alpha1.RunnerHookPodTemplateSpec{
-				{
-					Name: hookName,
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							RestartPolicy: corev1.RestartPolicyNever,
-							Containers: []corev1.Container{
-								{Name: "main", Image: "busybox:1.36", Command: []string{"true"}},
-							},
+		if r.Spec.Hooks == nil {
+			r.Spec.Hooks = &maykonfluxcidevv1alpha1.RunnerHooks{}
+		}
+		r.Spec.Hooks.Cleanup = []maykonfluxcidevv1alpha1.RunnerHookPodTemplateSpec{
+			{
+				Name: hookName,
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						RestartPolicy: corev1.RestartPolicyNever,
+						Containers: []corev1.Container{
+							{Name: "main", Image: "busybox:1.36", Command: []string{"true"}},
 						},
 					},
 				},
@@ -93,9 +94,7 @@ var _ = Describe("Runner Controller (Finalize)", func() {
 		}
 	}
 
-	withCleaningCondition := func(r *maykonfluxcidevv1alpha1.Runner) {
-		runner.SetNotReadyCleaning(r)
-	}
+	withCleaningCondition := runner.SetNotReadyCleaning
 
 	withCleanupHookStatus := func(phase corev1.PodPhase, msg string) func(*maykonfluxcidevv1alpha1.Runner) {
 		return func(r *maykonfluxcidevv1alpha1.Runner) {
@@ -123,9 +122,8 @@ var _ = Describe("Runner Controller (Finalize)", func() {
 	setupCleaningRunner := func(ctx context.Context, phase corev1.PodPhase, msg string, opts ...func(*maykonfluxcidevv1alpha1.Runner)) {
 		GinkgoHelper()
 		allOpts := append([]func(*maykonfluxcidevv1alpha1.Runner){withCleanupHook}, opts...)
-		r := newRunner(allOpts...)
-		Expect(k8sClient.Create(ctx, r)).Should(Succeed())
-		Expect(k8sClient.Delete(ctx, r)).Should(Succeed())
+		setupDeletingRunner(ctx, allOpts...)
+		r := &maykonfluxcidevv1alpha1.Runner{}
 		Expect(k8sClient.Get(ctx, typeNamespacedName, r)).Should(Succeed())
 		withCleaningCondition(r)
 		withCleanupHookStatus(phase, msg)(r)
@@ -149,8 +147,8 @@ var _ = Describe("Runner Controller (Finalize)", func() {
 			Should(MatchError(kerrors.IsNotFound, "IsNotFound"))
 	})
 
-	When("the runner is marked for deletion with no hooks defined", func() {
-		It("should set Cleaning, then remove the finalizer and delete the runner", func(ctx context.Context) {
+	When("the runner is marked for deletion with no hooks defined", Serial, func() {
+		It("should set the Cleaning condition", func(ctx context.Context) {
 			By("creating a runner marked for deletion with no hooks")
 			setupDeletingRunner(ctx)
 
@@ -158,14 +156,20 @@ var _ = Describe("Runner Controller (Finalize)", func() {
 			res, err := reconcileRunner(ctx)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(res).Should(Equal(reconcile.Result{}))
+
+			By("checking the runner is cleaning")
 			r := &maykonfluxcidevv1alpha1.Runner{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, r)).Should(Succeed())
 			Expect(runner.IsCleaning(*r)).Should(BeTrue())
+		})
 
-			By("reconciling the runner again")
-			res, err = reconcileRunner(ctx)
+		It("should remove the finalizer and delete the runner", func(ctx context.Context) {
+			By("reconciling the runner")
+			res, err := reconcileRunner(ctx)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(res).Should(Equal(reconcile.Result{}))
+
+			By("verifying the runner was deleted")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &maykonfluxcidevv1alpha1.Runner{})).Should(MatchError(kerrors.IsNotFound, "IsNotFound"))
 		})
 	})
@@ -245,9 +249,9 @@ var _ = Describe("Runner Controller (Finalize)", func() {
 	})
 
 	Context("Metrics tests", Serial, func() {
-		DescribeTable("should track the deleted metric correctly",
-			func(ctx context.Context, phase corev1.PodPhase, msg string, expectedDelta float64) {
-				setupCleaningRunner(ctx, phase, msg)
+		When("cleanup hooks succeed and the runner is deleted", func() {
+			It("should increment the deleted metric", func(ctx context.Context) {
+				setupCleaningRunner(ctx, corev1.PodSucceeded, "")
 
 				oldValue := testutil.ToFloat64(runnerDeleted)
 
@@ -256,11 +260,27 @@ var _ = Describe("Runner Controller (Finalize)", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(res).Should(Equal(reconcile.Result{}))
 
-				Expect(testutil.ToFloat64(runnerDeleted)).Should(Equal(oldValue + expectedDelta))
-			},
-			Entry("hooks succeeded — should increment", corev1.PodSucceeded, "", float64(1)),
-			Entry("hooks still running — should not increment", corev1.PodRunning, "", float64(0)),
-			Entry("hooks failed — should not increment", corev1.PodFailed, "exit code 1", float64(0)),
-		)
+				Expect(testutil.ToFloat64(runnerDeleted)).Should(Equal(oldValue + 1))
+			})
+		})
+
+		When("the runner is not deleted", func() {
+			DescribeTable("should not increment the deleted metric",
+				func(ctx context.Context, phase corev1.PodPhase, msg string) {
+					setupCleaningRunner(ctx, phase, msg)
+
+					oldValue := testutil.ToFloat64(runnerDeleted)
+
+					By("reconciling the runner")
+					res, err := reconcileRunner(ctx)
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(res).Should(Equal(reconcile.Result{}))
+
+					Expect(testutil.ToFloat64(runnerDeleted)).Should(Equal(oldValue))
+				},
+				Entry("hooks still running", corev1.PodRunning, ""),
+				Entry("hooks failed", corev1.PodFailed, "exit code 1"),
+			)
+		})
 	})
 })
