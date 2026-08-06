@@ -29,6 +29,12 @@ const (
 	// Annotation key prefix for all AWS configuration fields.
 	annotationPrefix = "aws.may.konflux-ci.dev/"
 
+	// AnnotationInstanceID stores the EC2 instance ID created by the AWS driver.
+	AnnotationInstanceID = annotationPrefix + "instance-id"
+	// AnnotationPublicIPAddress stores the EC2 instance public IP observed by the AWS driver.
+	AnnotationPublicIPAddress = annotationPrefix + "public-ip"
+
+	// Configuration annotations.
 	AnnotationRegion                  = annotationPrefix + "region"
 	AnnotationAmi                     = annotationPrefix + "ami"
 	AnnotationInstanceType            = annotationPrefix + "instance-type"

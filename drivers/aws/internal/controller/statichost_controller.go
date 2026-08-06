@@ -22,34 +22,40 @@ import (
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 // StaticHostReconciler reconciles a StaticHost object
 type StaticHostReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	hostReconciler HostReconciler
 }
 
-// +kubebuilder:rbac:groups=may.konflux-ci.dev.konflux-ci.dev,resources=statichosts,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=may.konflux-ci.dev.konflux-ci.dev,resources=statichosts/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=may.konflux-ci.dev.konflux-ci.dev,resources=statichosts/finalizers,verbs=update
+// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *StaticHostReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	host := &maykonfluxcidevv1alpha1.StaticHost{}
+	if err := r.Get(ctx, req.NamespacedName, host); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 
-	// TODO(user): your logic here
-
-	return ctrl.Result{}, nil
+	return r.hostReconciler.Reconcile(ctx, staticHostResource{StaticHost: host})
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *StaticHostReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.hostReconciler = HostReconciler{Client: r.Client, Scheme: r.Scheme}
+
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&maykonfluxcidevv1alpha1.StaticHost{}).
-		Named("statichost").
+		For(&maykonfluxcidevv1alpha1.StaticHost{}, builder.WithPredicates(predicate.NewPredicateFuncs(isAWSDriverHost))).
+		Named("statichost-aws").
 		Complete(r)
 }
