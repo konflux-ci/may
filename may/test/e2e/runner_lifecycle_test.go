@@ -155,6 +155,38 @@ func RunnerLifecycleContexts() {
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
+		It("deletes the ClusterQueue when Runner with Queue spec is deleted", func() {
+			runnerName := "runner-cleanup-queue"
+			applyRunnerWithCleanupHookAndQueue(runnerName, runnerLifecycleFlavor)
+
+			By("patching Runner to Ready so the controller creates the ClusterQueue")
+			statusPatch := `{"status":{"conditions":[{"type":"Ready","status":"True","reason":"Ready","message":"Ready","lastTransitionTime":"2024-01-01T00:00:00Z"}]}}`
+			cmd := exec.Command("kubectl", "patch", "runner", runnerName, "-n", namespace, "--type=merge", "-p", statusPatch, "--subresource=status")
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("reconciling until ClusterQueue is created")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "clusterqueue", runnerName)
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "ClusterQueue should be created")
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("deleting Runner to trigger cleanup and ClusterQueue deletion")
+			deleteRunner(runnerName)
+
+			By("waiting for Runner to be deleted")
+			Eventually(func(g Gomega) {
+				_, err := getRunnerOrErr(g, namespace, runnerName)
+				g.Expect(err).To(BeKubectlNotFound(), "Runner should be deleted after cleanup")
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("verifying ClusterQueue was also deleted")
+			cmd = exec.Command("kubectl", "get", "clusterqueue", runnerName)
+			_, err = utils.Run(cmd)
+			Expect(err).To(BeKubectlNotFound(), "ClusterQueue should be deleted during finalize")
+		})
+
 		It("does not delete Runner when cleanup fails", func() {
 			runnerName := "runner-cleanup-failed"
 			applyRunnerWithFailingCleanupHook(runnerName, runnerLifecycleFlavor)
@@ -247,6 +279,48 @@ spec:
   flavor: %s
   resources:
     %s: "1"
+  hooks:
+    cleanup:
+    - name: teardown
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+          - name: main
+            image: busybox:1.36
+            command: ["true"]
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+`, name, namespace, constants.RunnerTypeLabel, runnerTypeStatic, flavor, flavor)
+	applySpecification(yaml)
+}
+
+// applyRunnerWithCleanupHookAndQueue creates a Runner with runner-type=static, one cleanup hook
+// that runs "true" (exits 0), and a Queue spec with cohort so the controller creates a ClusterQueue.
+func applyRunnerWithCleanupHookAndQueue(name, flavor string) {
+	yaml := fmt.Sprintf(`apiVersion: may.konflux-ci.dev/v1alpha1
+kind: Runner
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    %s: %s
+spec:
+  flavor: %s
+  resources:
+    %s: "1"
+  queue:
+    cohort: e2e-test-cohort
   hooks:
     cleanup:
     - name: teardown
