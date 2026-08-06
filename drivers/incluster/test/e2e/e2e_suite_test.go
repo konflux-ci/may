@@ -42,7 +42,7 @@ var (
 
 	// projectImage is the name of the image which will be build and loaded
 	// with the code source changes to be tested.
-	projectImage = "example.com/incluster:v0.0.1"
+	projectImage = "localhost/example.com/incluster:v0.0.1"
 )
 
 // TestE2E runs the end-to-end (e2e) test suite for the project. These tests execute in an isolated,
@@ -57,8 +57,15 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	By("building the manager(Operator) image")
-	coverageParam := fmt.Sprintf("ENABLE_COVERAGE=%s", os.Getenv("ENABLE_COVERAGE"))
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage), coverageParam)
+	args := []string{
+		"docker-build",
+		fmt.Sprintf("IMG=%s", projectImage),
+	}
+	args = append(args, fmt.Sprintf("ENABLE_COVERAGE=%s", os.Getenv("ENABLE_COVERAGE")))
+	if ct, found := os.LookupEnv("CONTAINER_TOOL"); found {
+		args = append(args, fmt.Sprintf("CONTAINER_TOOL=%s", ct))
+	}
+	cmd := exec.Command("make", args...)
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
 

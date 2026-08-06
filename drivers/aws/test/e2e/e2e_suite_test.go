@@ -33,7 +33,7 @@ import (
 
 var (
 	// managerImage is the manager image to be built and loaded for testing.
-	managerImage = "example.com/driver-aws:v0.0.1"
+	managerImage = "localhost/example.com/driver-aws:v0.0.1"
 	// shouldCleanupCertManager tracks whether CertManager was installed by this suite.
 	shouldCleanupCertManager = false
 )
@@ -50,8 +50,15 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	By("building the manager image")
-	coverageParam := fmt.Sprintf("ENABLE_COVERAGE=%s", os.Getenv("ENABLE_COVERAGE"))
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", managerImage), coverageParam)
+	args := []string{
+		"docker-build",
+		fmt.Sprintf("IMG=%s", managerImage),
+	}
+	args = append(args, fmt.Sprintf("ENABLE_COVERAGE=%s", os.Getenv("ENABLE_COVERAGE")))
+	if ct, found := os.LookupEnv("CONTAINER_TOOL"); found {
+		args = append(args, fmt.Sprintf("CONTAINER_TOOL=%s", ct))
+	}
+	cmd := exec.Command("make", args...)
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
 

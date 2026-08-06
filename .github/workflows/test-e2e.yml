@@ -63,6 +63,9 @@ jobs:
         run: |
           go mod tidy
           make test-e2e-coverage
+        env:
+          CONTAINER_TOOL: podman
+          KIND_EXPERIMENTAL_PROVIDER: podman
 
       - name: Collect e2e coverage from instrumented pods
         if: always()
@@ -140,6 +143,9 @@ jobs:
         run: |
           go mod tidy
           make test-e2e-smoke-coverage
+        env:
+          CONTAINER_TOOL: podman
+          KIND_EXPERIMENTAL_PROVIDER: podman
 
       - name: Collect e2e coverage from instrumented pods
         if: always()
