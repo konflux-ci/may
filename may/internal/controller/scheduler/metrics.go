@@ -36,6 +36,5 @@ var runnerDeleted = prometheus.NewCounter(prometheus.CounterOpts{
 })
 
 func init() {
-	metrics.Registry.MustRegister(runnerDeleted)
-	metrics.Registry.MustRegister(claimMatched)
+	metrics.Registry.MustRegister(runnerDeleted, claimMatched)
 }
