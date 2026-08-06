@@ -97,6 +97,23 @@ func ClaimerContexts() {
 			}).Should(Succeed())
 		})
 
+		DescribeTable("does not create a Claim for Pod with excluded flavor annotation",
+			func(flavor string) {
+				podName := fmt.Sprintf("pod-claimer-excluded-%s", flavor)
+
+				By(fmt.Sprintf("creating a Pod with excluded flavor annotation (%s)", flavor))
+				createPodWithFlavor(podName, claimerTestNamespace, flavor)
+
+				By("verifying no Claim is created for excluded flavor")
+				Consistently(func(g Gomega) {
+					_, err := getClaimOrErr(g, claimerTestNamespace, podName)
+					g.Expect(err).To(BeKubectlNotFound(), "expected no Claim for Pod with excluded flavor %q", flavor)
+				}).Should(Succeed())
+			},
+			Entry("localhost flavor", "localhost"),
+			Entry("local flavor", "local"),
+		)
+
 		It("does not create a Claim for Pod without flavor annotation in tenant namespace", func() {
 			podName := "pod-claimer-without-flavor"
 
