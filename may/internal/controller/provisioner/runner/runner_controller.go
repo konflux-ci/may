@@ -329,7 +329,10 @@ func (r *RunnerReconciler) finalize(ctx context.Context, u maykonfluxcidevv1alph
 	// remove finalizer from runner
 	l.Info("remove finalizer from runner")
 	if controllerutil.RemoveFinalizer(&u, provisionerconstants.RunnerControllerFinalizer) {
-		return r.Update(ctx, &u)
+		if err := r.Update(ctx, &u); err != nil {
+			return err
+		}
+		runnerDeleted.Inc()
 	}
 	return nil
 }
