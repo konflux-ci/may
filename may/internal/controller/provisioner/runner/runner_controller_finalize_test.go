@@ -27,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	kueuev1beta1 "sigs.k8s.io/kueue/apis/kueue/v1beta1"
 
@@ -140,8 +139,14 @@ var _ = Describe("Runner Controller (Finalize)", func() {
 			return
 		}
 		Expect(err).ShouldNot(HaveOccurred())
-		controllerutil.RemoveFinalizer(r, provisionerconstants.RunnerControllerFinalizer)
-		Expect(k8sClient.Update(ctx, r)).Should(Succeed())
+		if len(r.Finalizers) > 0 {
+			r.Finalizers = []string{}
+			Expect(k8sClient.Update(ctx, r)).Should(Succeed())
+		}
+		Expect(k8sClient.Delete(ctx, r)).Should(
+			Or(Succeed(), MatchError(kerrors.IsNotFound, "IsNotFound")))
+		Expect(k8sClient.Get(ctx, typeNamespacedName, r)).
+			Should(MatchError(kerrors.IsNotFound, "IsNotFound"))
 	})
 
 	When("the runner is marked for deletion with no hooks defined", func() {

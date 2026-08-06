@@ -158,6 +158,13 @@ func RunnerLifecycleContexts() {
 		It("deletes the ClusterQueue when Runner with Queue spec is deleted", func() {
 			runnerName := "runner-cleanup-queue"
 			applyRunnerWithCleanupHookAndQueue(runnerName, runnerLifecycleFlavor)
+			defer func() {
+				By("cleaning up Runner finalizer and ClusterQueue if test failed midway")
+				cmd := exec.Command("kubectl", "patch", "runner", runnerName, "-n", namespace, "--type=json", "-p", `[{"op": "replace", "path": "/metadata/finalizers", "value": []}]`)
+				_, _ = utils.Run(cmd)
+				cmd = exec.Command("kubectl", "delete", "clusterqueue", runnerName, "--ignore-not-found")
+				_, _ = utils.Run(cmd)
+			}()
 
 			By("patching Runner to Ready so the controller creates the ClusterQueue")
 			statusPatch := `{"status":{"conditions":[{"type":"Ready","status":"True","reason":"Ready","message":"Ready","lastTransitionTime":"2024-01-01T00:00:00Z"}]}}`
@@ -182,9 +189,11 @@ func RunnerLifecycleContexts() {
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 
 			By("verifying ClusterQueue was also deleted")
-			cmd = exec.Command("kubectl", "get", "clusterqueue", runnerName)
-			_, err = utils.Run(cmd)
-			Expect(err).To(BeKubectlNotFound(), "ClusterQueue should be deleted during finalize")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "clusterqueue", runnerName)
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(BeKubectlNotFound(), "ClusterQueue should be deleted during finalize")
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
 		It("does not delete Runner when cleanup fails", func() {
