@@ -20,6 +20,7 @@ limitations under the License.
 package e2e
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"os/exec"
@@ -50,13 +51,12 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	By("building the manager image")
+	ct := cmp.Or(os.Getenv("CONTAINER_TOOL"), "docker")
 	args := []string{
 		"docker-build",
 		fmt.Sprintf("IMG=%s", managerImage),
-	}
-	args = append(args, fmt.Sprintf("ENABLE_COVERAGE=%s", os.Getenv("ENABLE_COVERAGE")))
-	if ct, found := os.LookupEnv("CONTAINER_TOOL"); found {
-		args = append(args, fmt.Sprintf("CONTAINER_TOOL=%s", ct))
+		fmt.Sprintf("ENABLE_COVERAGE=%s", os.Getenv("ENABLE_COVERAGE")),
+		fmt.Sprintf("CONTAINER_TOOL=%s", ct),
 	}
 	cmd := exec.Command("make", args...)
 	_, err := utils.Run(cmd)
@@ -65,7 +65,7 @@ var _ = BeforeSuite(func() {
 	// TODO(user): If you want to change the e2e test vendor from Kind,
 	// ensure the image is built and available, then remove the following block.
 	By("loading the manager image on Kind")
-	err = utils.LoadImageToKindClusterWithName(managerImage)
+	err = utils.LoadImageToKindClusterWithName(ct, managerImage)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager image into Kind")
 
 	setupCertManager()
