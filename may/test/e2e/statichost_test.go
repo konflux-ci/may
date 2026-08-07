@@ -28,7 +28,9 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
+	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	"github.com/konflux-ci/may/pkg/claim"
 	"github.com/konflux-ci/may/pkg/constants"
 	"github.com/konflux-ci/may/pkg/runner"
@@ -204,6 +206,12 @@ func StaticHostContexts() {
 					g.Expect(err).To(BeKubectlNotFound(), "Runner %s should be deleted", runnerName)
 				}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 			}
+
+			By("asserting the host is in the drained state")
+			Eventually(func(g Gomega) {
+				h := getStaticHost(g, namespace, staticHostName)
+				g.Expect(h.Status.State).To(Equal(ptr.To(maykonfluxcidevv1alpha1.HostActualState("Drained"))))
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
 		It("recreates Runners when StaticHost state is Ready", func() {
