@@ -94,7 +94,7 @@ var _ = Describe("Runner Controller (Finalize)", func() {
 		}
 	}
 
-	withCleaningCondition := runner.SetNotReadyCleaning
+	withCleaningCondition := func(r *maykonfluxcidevv1alpha1.Runner) { runner.SetNotReadyCleaning(r) }
 
 	withCleanupHookStatus := func(phase corev1.PodPhase, msg string) func(*maykonfluxcidevv1alpha1.Runner) {
 		return func(r *maykonfluxcidevv1alpha1.Runner) {
@@ -111,23 +111,31 @@ var _ = Describe("Runner Controller (Finalize)", func() {
 		}).Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
 	}
 
-	setupDeletingRunner := func(ctx context.Context, opts ...func(*maykonfluxcidevv1alpha1.Runner)) {
+	setupRunner := func(ctx context.Context, opts ...func(*maykonfluxcidevv1alpha1.Runner)) *maykonfluxcidevv1alpha1.Runner {
 		GinkgoHelper()
 		r := newRunner(opts...)
+		s := r.Status
 		Expect(k8sClient.Create(ctx, r)).Should(Succeed())
+		r.Status = s
+		Expect(k8sClient.Status().Update(ctx, r)).Should(Succeed())
+		return r
+	}
+
+	setupDeletingRunner := func(ctx context.Context, opts ...func(*maykonfluxcidevv1alpha1.Runner)) *maykonfluxcidevv1alpha1.Runner {
+		GinkgoHelper()
+		r := setupRunner(ctx, opts...)
 		Expect(k8sClient.Delete(ctx, r)).Should(Succeed())
-		Expect(k8sClient.Get(ctx, typeNamespacedName, r)).Should(Succeed())
+		return r
 	}
 
 	setupCleaningRunner := func(ctx context.Context, phase corev1.PodPhase, msg string, opts ...func(*maykonfluxcidevv1alpha1.Runner)) {
 		GinkgoHelper()
-		allOpts := append([]func(*maykonfluxcidevv1alpha1.Runner){withCleanupHook}, opts...)
+		allOpts := append([]func(*maykonfluxcidevv1alpha1.Runner){
+			withCleanupHook,
+			withCleaningCondition,
+			withCleanupHookStatus(phase, msg),
+		}, opts...)
 		setupDeletingRunner(ctx, allOpts...)
-		r := &maykonfluxcidevv1alpha1.Runner{}
-		Expect(k8sClient.Get(ctx, typeNamespacedName, r)).Should(Succeed())
-		withCleaningCondition(r)
-		withCleanupHookStatus(phase, msg)(r)
-		Expect(k8sClient.Status().Update(ctx, r)).Should(Succeed())
 	}
 
 	AfterEach(func(ctx context.Context) {
