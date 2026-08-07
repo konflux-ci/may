@@ -198,4 +198,38 @@ func DynamicHostContexts() {
 			})
 		})
 	})
+
+	Context("When operator manually deletes DynamicHost", func() {
+		It("deletes the Runner and removes DynamicHost", func() {
+			hostName := "dynamichost-operator-delete"
+			DeferCleanup(func() { deleteDynamicHost(namespace, hostName) })
+
+			By("creating Ready DynamicHost with one Runner")
+			applySpecificationWithStatus(dynamicHostYAML(hostName, namespace, dynamichostFlavor, dynamichostFlavor, dynamichostRootKeyName, "Ready"))
+
+			By("waiting for Runner to be created")
+			Eventually(func(g Gomega) {
+				r := getRunner(g, namespace, hostName)
+				g.Expect(r.Name).To(Equal(hostName))
+				g.Expect(r.Spec.Flavor).To(Equal(dynamichostFlavor))
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("deleting DynamicHost to trigger finalizer")
+			cmd := exec.Command("kubectl", "delete", "dynamichost", hostName, "-n", namespace)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("waiting for Runner to be deleted by finalizer")
+			Eventually(func(g Gomega) {
+				_, err := getRunnerOrErr(g, namespace, hostName)
+				g.Expect(err).To(BeKubectlNotFound(), "Runner should be deleted")
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("waiting for DynamicHost to be deleted (finalizer removed)")
+			Eventually(func(g Gomega) {
+				_, err := getDynamicHostOrNotFound(g, namespace, hostName)
+				g.Expect(err).To(HaveOccurred(), "DynamicHost should be deleted after finalizer removed")
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+		})
+	})
 }
