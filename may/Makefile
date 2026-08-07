@@ -108,8 +108,8 @@ test-e2e-smoke-coverage: vet-e2e setup-test-e2e manifests generate fmt vet ## Ru
 
 .PHONY: load-image
 load-image:
-	$(CONTAINER_TOOL) save $(IMG) | \
-		$(KIND) load image-archive --name $(KIND_CLUSTER_NAME) /dev/stdin
+	$(CONTAINER_TOOL) save "$(IMG)" | \
+		$(KIND) load image-archive --name "$(KIND_CLUSTER)" /dev/stdin
 
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
