@@ -155,12 +155,12 @@ var _ = Describe("Runner Controller (Finalize)", func() {
 			Should(MatchError(kerrors.IsNotFound, "IsNotFound"))
 	})
 
-	When("the runner is marked for deletion with no hooks defined", Serial, func() {
-		It("should set the Cleaning condition", func(ctx context.Context) {
+	When("the runner is marked for deletion with no hooks defined", func() {
+		It("should set Cleaning then remove the finalizer and delete the runner", func(ctx context.Context) {
 			By("creating a runner marked for deletion with no hooks")
 			setupDeletingRunner(ctx)
 
-			By("reconciling the runner")
+			By("reconciling the runner to set Cleaning")
 			res, err := reconcileRunner(ctx)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(res).Should(Equal(reconcile.Result{}))
@@ -169,11 +169,9 @@ var _ = Describe("Runner Controller (Finalize)", func() {
 			r := &maykonfluxcidevv1alpha1.Runner{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, r)).Should(Succeed())
 			Expect(runner.IsCleaning(*r)).Should(BeTrue())
-		})
 
-		It("should remove the finalizer and delete the runner", func(ctx context.Context) {
-			By("reconciling the runner")
-			res, err := reconcileRunner(ctx)
+			By("reconciling the runner to finalize")
+			res, err = reconcileRunner(ctx)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(res).Should(Equal(reconcile.Result{}))
 
