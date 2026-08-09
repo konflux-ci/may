@@ -84,17 +84,9 @@ func PodWebhookContexts() {
 		DescribeTable("does not add scheduling gate to Pod with excluded flavor annotation",
 			func(flavor string) {
 				podName := fmt.Sprintf("pod-excluded-%s", flavor)
-				flavorAnnotation := pod.KueueFlavorLabelPrefix + flavor
 
 				By(fmt.Sprintf("creating a Pod with excluded flavor annotation (%s)", flavor))
-				cmd := exec.Command("kubectl", "run", podName,
-					"--image=registry.k8s.io/pause:3.9",
-					"--restart=Never",
-					"-n", webhookTestNamespace,
-					"--overrides", fmt.Sprintf(`{"metadata":{"annotations":{"%s":"1"}}}`, flavorAnnotation),
-				)
-				_, err := utils.Run(cmd)
-				Expect(err).NotTo(HaveOccurred())
+				createPodWithFlavor(podName, webhookTestNamespace, flavor)
 
 				By("verifying the Pod does not have the may scheduling gate")
 				Eventually(func(g Gomega) {
