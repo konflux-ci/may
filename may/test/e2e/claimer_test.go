@@ -22,6 +22,7 @@ package e2e
 import (
 	"fmt"
 	"os/exec"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -108,7 +109,7 @@ func ClaimerContexts() {
 				Consistently(func(g Gomega) {
 					_, err := getClaimOrErr(g, claimerTestNamespace, podName)
 					g.Expect(err).To(BeKubectlNotFound(), "expected no Claim for Pod with excluded flavor %q", flavor)
-				}).Should(Succeed())
+				}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 			},
 			Entry("localhost flavor", "localhost"),
 			Entry("local flavor", "local"),
