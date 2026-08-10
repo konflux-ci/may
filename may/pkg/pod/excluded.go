@@ -19,8 +19,9 @@ package pod
 // TODO(@konflux-ci): replace this hardcoded list with a configurable source
 // so adding new excluded flavors does not require a code change and redeploy.
 var excludedFlavors = map[string]struct{}{
-	"localhost": {},
-	"local":     {},
+	"localhost":    {},
+	"local":        {},
+	"linux/x86_64": {},
 }
 
 func IsExcludedFlavor(flavor string) bool {

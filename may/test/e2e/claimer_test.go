@@ -22,6 +22,7 @@ package e2e
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -100,7 +101,8 @@ func ClaimerContexts() {
 
 		DescribeTable("does not create a Claim for Pod with excluded flavor annotation",
 			func(flavor string) {
-				podName := fmt.Sprintf("pod-claimer-excluded-%s", flavor)
+				// Replace "/" for valid Pod names (e.g. linux/x86_64)
+			podName := "pod-claimer-excluded-" + strings.ReplaceAll(flavor, "/", "-")
 
 				By(fmt.Sprintf("creating a Pod with excluded flavor annotation (%s)", flavor))
 				createPodWithFlavor(podName, claimerTestNamespace, flavor)
@@ -113,6 +115,7 @@ func ClaimerContexts() {
 			},
 			Entry("localhost flavor", "localhost"),
 			Entry("local flavor", "local"),
+			Entry("linux/x86_64 flavor", "linux/x86_64"),
 		)
 
 		It("does not create a Claim for Pod without flavor annotation in tenant namespace", func() {

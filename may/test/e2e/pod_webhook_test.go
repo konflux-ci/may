@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os/exec"
 	"slices"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -83,7 +84,8 @@ func PodWebhookContexts() {
 
 		DescribeTable("does not add scheduling gate to Pod with excluded flavor annotation",
 			func(flavor string) {
-				podName := fmt.Sprintf("pod-excluded-%s", flavor)
+				// Replace "/" for valid Pod names (e.g. linux/x86_64)
+			podName := "pod-excluded-" + strings.ReplaceAll(flavor, "/", "-")
 
 				By(fmt.Sprintf("creating a Pod with excluded flavor annotation (%s)", flavor))
 				createPodWithFlavor(podName, webhookTestNamespace, flavor)
@@ -98,6 +100,7 @@ func PodWebhookContexts() {
 			},
 			Entry("localhost flavor", "localhost"),
 			Entry("local flavor", "local"),
+			Entry("linux/x86_64 flavor", "linux/x86_64"),
 		)
 
 		It("leaves Pod without flavor annotation unchanged", func() {
