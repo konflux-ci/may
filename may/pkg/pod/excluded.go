@@ -21,7 +21,7 @@ package pod
 var excludedFlavors = map[string]struct{}{
 	"localhost":    {},
 	"local":        {},
-	"linux/x86_64": {},
+	"linux-x86-64": {},
 }
 
 func IsExcludedFlavor(flavor string) bool {
