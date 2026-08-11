@@ -35,8 +35,15 @@ var (
 		Name:      "initialized",
 		Help:      "Total number of runners initialized successfully",
 	})
+
+	runnerDeleted = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "may",
+		Subsystem: "runner",
+		Name:      "deleted",
+		Help:      "Total number of runners that completed cleanup and were deleted",
+	})
 )
 
 func init() {
-	metrics.Registry.MustRegister(runnerCleaningFailed, runnerInitialized)
+	metrics.Registry.MustRegister(runnerCleaningFailed, runnerInitialized, runnerDeleted)
 }
