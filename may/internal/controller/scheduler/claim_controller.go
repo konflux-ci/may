@@ -1,5 +1,5 @@
 /*
-Copyright 2025.
+Copyright 2026.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -84,7 +85,14 @@ func (r *ClaimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// resource is getting deleted, finalize it
 	if !c.DeletionTimestamp.IsZero() {
 		l.Info("finalizing")
-		return ctrl.Result{}, r.finalize(ctx, c)
+		updated, err := r.finalize(ctx, c)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if updated {
+			return ctrl.Result{RequeueAfter: 100 * time.Millisecond}, nil
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// ensure finalizer is set
@@ -147,33 +155,68 @@ func (r *ClaimReconciler) ensureOwnerReference(ctx context.Context, c maykonflux
 	return false, nil
 }
 
-func (r *ClaimReconciler) finalize(ctx context.Context, c maykonfluxcidevv1alpha1.Claim) error {
+func (r *ClaimReconciler) finalize(ctx context.Context, c maykonfluxcidevv1alpha1.Claim) (bool, error) {
+	// ensure the claim is still to be finalized
+	if !controllerutil.ContainsFinalizer(&c, constants.ClaimControllerFinalizer) {
+		return false, nil
+	}
+
+	// remove all linked runners
+	if updated, err := r.ensureRunnersAreDeleted(ctx, c); updated || err != nil {
+		return updated, err
+	}
+
+	// remove finalizer from claim
+	controllerutil.RemoveFinalizer(&c, constants.ClaimControllerFinalizer)
+	return false, r.Update(ctx, &c)
+}
+
+func (r *ClaimReconciler) ensureRunnersAreDeleted(ctx context.Context, c maykonfluxcidevv1alpha1.Claim) (bool, error) {
 	uu := maykonfluxcidevv1alpha1.RunnerList{}
 	if err := r.List(ctx, &uu, client.MatchingFields{
 		runner.FieldSpecInUseByName:      c.Name,
 		runner.FieldSpecInUseByNamespace: c.Namespace,
 	}, client.InNamespace(r.Namespace)); err != nil {
-		return err
+		return false, err
 	}
 
+	// ensure linked runners are deleted
 	errs := []error{}
+	updated := false
 	for _, u := range uu.Items {
-		if err := r.Delete(ctx, &u); err != nil {
-			errs = append(errs, err)
+		toBeUpdated := u.DeletionTimestamp.IsZero() ||
+			controllerutil.ContainsFinalizer(&u, constants.ClaimControllerFinalizer)
+
+		if !toBeUpdated {
 			continue
 		}
 
-		if controllerutil.RemoveFinalizer(&u, constants.ClaimControllerFinalizer) {
-			errs = append(errs, r.Update(ctx, &u))
+		updated = true
+		if err := r.ensureRunnerIsDeleted(ctx, u); err != nil {
+			errs = append(errs, err)
 		}
 	}
-	if err := errors.Join(errs...); err != nil {
-		return err
+
+	return updated, errors.Join(errs...)
+}
+
+func (r *ClaimReconciler) ensureRunnerIsDeleted(ctx context.Context, u maykonfluxcidevv1alpha1.Runner) error {
+	if u.DeletionTimestamp.IsZero() {
+		if err := r.Delete(ctx, &u); err != nil {
+			if kerrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		runnerDeleted.Inc()
+		return nil
 	}
 
-	if controllerutil.RemoveFinalizer(&c, constants.ClaimControllerFinalizer) {
-		return r.Update(ctx, &c)
+	if controllerutil.RemoveFinalizer(&u, constants.ClaimControllerFinalizer) {
+		return r.Update(ctx, &u)
 	}
+
 	return nil
 }
 
