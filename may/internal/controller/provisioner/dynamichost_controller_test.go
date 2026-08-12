@@ -32,6 +32,13 @@ import (
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 )
 
+var (
+	// pending  = maykonfluxcidevv1alpha1.HostActualStatePending
+	ready = maykonfluxcidevv1alpha1.HostActualStateReady
+	// draining = maykonfluxcidevv1alpha1.HostActualStateDraining
+	// drained  = maykonfluxcidevv1alpha1.HostActualStateDrained
+)
+
 var _ = Describe("DynamicHost Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
@@ -48,7 +55,7 @@ var _ = Describe("DynamicHost Controller", func() {
 			By("creating the custom resource for the Kind DynamicHost")
 			err := k8sClient.Get(ctx, typeNamespacedName, dynamichost)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &maykonfluxcidevv1alpha1.DynamicHost{
+				dynamichost = &maykonfluxcidevv1alpha1.DynamicHost{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -66,7 +73,7 @@ var _ = Describe("DynamicHost Controller", func() {
 						},
 					},
 				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+				Expect(k8sClient.Create(ctx, dynamichost)).To(Succeed())
 			}
 		})
 
@@ -78,6 +85,10 @@ var _ = Describe("DynamicHost Controller", func() {
 
 			By("Cleanup the specific resource instance DynamicHost")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+
+			// Since we don't have a controller manager, we need to manually Reconcile
+			// in order for finalizers to run.
+			Expect(_reconcile(typeNamespacedName)).NotTo(HaveOccurred())
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
@@ -93,5 +104,37 @@ var _ = Describe("DynamicHost Controller", func() {
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
 			// Example: If you expect a certain status condition after reconciliation, verify it here.
 		})
+
+		It("should allocate a Runner", func() {
+			By("Creating a Runner object when a DynamicHost object's status is Ready")
+
+			err := _reconcile(typeNamespacedName)
+			Expect(err).NotTo(HaveOccurred())
+
+			dynamicHost := &maykonfluxcidevv1alpha1.DynamicHost{}
+			err = k8sClient.Get(ctx, typeNamespacedName, dynamicHost)
+			Expect(err).NotTo(HaveOccurred())
+
+			dynamicHost.Status.State = &ready
+			err = k8sClient.Status().Update(ctx, dynamicHost)
+			Expect(err).NotTo(HaveOccurred())
+			err = _reconcile(typeNamespacedName)
+			Expect(err).NotTo(HaveOccurred())
+
+			runner := &maykonfluxcidevv1alpha1.Runner{}
+			err = k8sClient.Get(ctx, typeNamespacedName, runner)
+			Expect(err).NotTo(HaveOccurred())
+		})
 	})
 })
+
+func _reconcile(namespacedName types.NamespacedName) error {
+	controllerReconciler := &DynamicHostReconciler{
+		Client: k8sClient,
+		Scheme: k8sClient.Scheme(),
+	}
+	_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+		NamespacedName: namespacedName,
+	})
+	return err
+}
