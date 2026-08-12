@@ -83,12 +83,21 @@ var _ = Describe("DynamicHost Controller", func() {
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
+			By("Cleaning up any Runner objects associated with a DynamicHost")
+			runners := &maykonfluxcidevv1alpha1.RunnerList{}
+			err = k8sClient.List(ctx, runners)
+			Expect(err).NotTo(HaveOccurred())
+			for _, runner := range runners.Items {
+				err = k8sClient.Delete(ctx, &runner)
+				Expect(err).NotTo(HaveOccurred())
+			}
+
 			By("Cleanup the specific resource instance DynamicHost")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 
 			// Since we don't have a controller manager, we need to manually Reconcile
 			// in order for finalizers to run.
-			Expect(_reconcile(typeNamespacedName)).NotTo(HaveOccurred())
+			Expect(_reconcile(ctx, typeNamespacedName)).NotTo(HaveOccurred())
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
@@ -108,7 +117,7 @@ var _ = Describe("DynamicHost Controller", func() {
 		It("should allocate a Runner", func() {
 			By("Creating a Runner object when a DynamicHost object's status is Ready")
 
-			err := _reconcile(typeNamespacedName)
+			err := _reconcile(ctx, typeNamespacedName)
 			Expect(err).NotTo(HaveOccurred())
 
 			dynamicHost := &maykonfluxcidevv1alpha1.DynamicHost{}
@@ -118,7 +127,7 @@ var _ = Describe("DynamicHost Controller", func() {
 			dynamicHost.Status.State = &ready
 			err = k8sClient.Status().Update(ctx, dynamicHost)
 			Expect(err).NotTo(HaveOccurred())
-			err = _reconcile(typeNamespacedName)
+			err = _reconcile(ctx, typeNamespacedName)
 			Expect(err).NotTo(HaveOccurred())
 
 			runner := &maykonfluxcidevv1alpha1.Runner{}
@@ -128,7 +137,7 @@ var _ = Describe("DynamicHost Controller", func() {
 	})
 })
 
-func _reconcile(namespacedName types.NamespacedName) error {
+func _reconcile(ctx context.Context, namespacedName types.NamespacedName) error {
 	controllerReconciler := &DynamicHostReconciler{
 		Client: k8sClient,
 		Scheme: k8sClient.Scheme(),
