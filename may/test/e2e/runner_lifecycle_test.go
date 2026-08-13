@@ -174,6 +174,22 @@ func RunnerLifecycleContexts() {
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
+		It("exposes may_runner_initialized metric after initialization", func() {
+			By("creating a curl pod to scrape fresh metrics from the controller")
+			podName := createMetricsCurlPod()
+			defer deletePod(namespace, podName)
+
+			By("waiting for the curl pod to complete")
+			waitForPodSucceeded(namespace, podName)
+
+			By("verifying the metrics output contains runner initialization counters")
+			cmd := exec.Command("kubectl", "logs", podName, "-n", namespace)
+			output, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(output).To(ContainSubstring(`may_runner_initialized{result="success",type="static"}`))
+			Expect(output).To(ContainSubstring(`may_runner_initialized{result="failure",type="static"}`))
+		})
+
 		It("does not delete Runner when cleanup fails", func() {
 			runnerName := "runner-cleanup-failed"
 			applyRunnerWithFailingCleanupHook(runnerName, runnerLifecycleFlavor)
