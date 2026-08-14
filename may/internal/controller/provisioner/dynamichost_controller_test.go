@@ -88,7 +88,9 @@ var _ = Describe("DynamicHost Controller", func() {
 			}
 
 			By("Cleanup the specific resource instance DynamicHost")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, resource)).NotTo(HaveOccurred())
+			Expect(_reconcile(ctx, typeNamespacedName)).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(HaveOccurred())
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
@@ -124,7 +126,7 @@ var _ = Describe("DynamicHost Controller", func() {
 			Expect(runner.SetReady(r)).To(BeTrue())
 			Expect(k8sClient.Status().Update(ctx, r)).NotTo(HaveOccurred())
 			Expect(k8sClient.Get(ctx, typeNamespacedName, r)).NotTo(HaveOccurred())
-			Expect(len(r.Status.Conditions)).NotTo(BeZero())
+			Expect(r.Status.Conditions).NotTo(BeEmpty())
 			Expect(_reconcile(ctx, typeNamespacedName)).NotTo(HaveOccurred())
 
 			By("updating the DynamicHost if the Runner has a Pipeline")
@@ -137,7 +139,7 @@ var _ = Describe("DynamicHost Controller", func() {
 
 			By("updating the DynamicHost if the Runner is marked for deletion")
 			Expect(k8sClient.Delete(ctx, r)).NotTo(HaveOccurred())
-			Expect(_reconcile(ctx, typeNamespacedName))
+			Expect(_reconcile(ctx, typeNamespacedName)).NotTo(HaveOccurred())
 			Expect(k8sClient.Get(ctx, typeNamespacedName, dynamicHost)).NotTo(HaveOccurred())
 			Expect(*dynamicHost.Status.State).To(Equal(maykonfluxcidevv1alpha1.HostActualStateDraining))
 		})
