@@ -109,7 +109,6 @@ test-e2e-smoke-coverage: vet-e2e setup-test-e2e manifests generate fmt vet ## Ru
 .PHONY: report-coverage
 report-coverage:
 	go tool cover -html cover.out -o cover.html
-	open cover.html
 
 .PHONY: load-image
 load-image:
