@@ -165,6 +165,25 @@ func RunnerLifecycleContexts() {
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
+		It("marks Runner as InitializationFailed when provisioning hook fails", func() {
+			runnerName := "runner-init-failed"
+			defer deleteRunner(runnerName)
+
+			applyRunnerWithFailingProvisioningHook(runnerName, runnerLifecycleFlavor)
+
+			By("waiting for Runner to get Initializing and hook pod to be created")
+			Eventually(func(g Gomega) {
+				r := getRunner(g, namespace, runnerName)
+				g.Expect(runner.IsInitializing(*r)).To(BeTrue())
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("waiting for provisioning hook to fail and Runner to get InitializationFailed")
+			Eventually(func(g Gomega) {
+				r := getRunner(g, namespace, runnerName)
+				g.Expect(runner.IsInitializationFailed(*r)).To(BeTrue())
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+		})
+
 		It("runs cleanup hooks and updates status before Runner is deleted", func() {
 			runnerName := "runner-cleanup-hooks"
 			applyRunnerWithCleanupHook(runnerName, runnerLifecycleFlavor)
@@ -198,6 +217,22 @@ func RunnerLifecycleContexts() {
 				_, err := getRunnerOrErr(g, namespace, runnerName)
 				g.Expect(err).To(BeKubectlNotFound(), "Runner should be deleted after cleanup hooks succeed")
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+		})
+
+		It("exposes may_runner_initialized metric after initialization", func() {
+			By("creating a curl pod to scrape fresh metrics from the controller")
+			podName := createMetricsCurlPod()
+			defer deletePod(namespace, podName)
+
+			By("waiting for the curl pod to complete")
+			waitForPodSucceeded(namespace, podName)
+
+			By("verifying the metrics output contains runner initialization counters")
+			cmd := exec.Command("kubectl", "logs", podName, "-n", namespace)
+			output, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(output).To(ContainSubstring(`may_runner_initialized{result="success",type="static"}`))
+			Expect(output).To(ContainSubstring(`may_runner_initialized{result="failure",type="static"}`))
 		})
 
 		It("does not delete Runner when cleanup fails", func() {
@@ -306,6 +341,46 @@ spec:
           - name: main
             image: busybox:1.36
             command: ["true"]
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+`, name, namespace, constants.RunnerTypeLabel, runnerTypeStatic, flavor, flavor)
+	applySpecification(yaml)
+}
+
+// applyRunnerWithFailingProvisioningHook creates a Runner with runner-type=static and one provisioning hook
+// that runs "exit 1" so initialization fails and the Runner is marked as InitializationFailed.
+func applyRunnerWithFailingProvisioningHook(name, flavor string) {
+	yaml := fmt.Sprintf(`apiVersion: may.konflux-ci.dev/v1alpha1
+kind: Runner
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    %s: %s
+spec:
+  flavor: %s
+  resources:
+    %s: "1"
+  hooks:
+    provisioning:
+    - name: setup
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+          - name: main
+            image: busybox:1.36
+            command: ["sh", "-c", "exit 1"]
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:

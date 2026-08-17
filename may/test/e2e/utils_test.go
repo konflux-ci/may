@@ -93,6 +93,39 @@ func getMetricsOutput() (string, error) {
 	return utils.Run(cmd)
 }
 
+// createMetricsCurlPod creates a temporary curl pod that scrapes the metrics endpoint and returns its name.
+// The caller is responsible for waiting (e.g. waitForPodSucceeded), reading logs, and cleanup.
+func createMetricsCurlPod() string {
+	podName := fmt.Sprintf("curl-metrics-%d", time.Now().UnixNano())
+
+	cmd := exec.Command("kubectl", "run", podName, "--restart=Never",
+		"--namespace", namespace,
+		"--image=curlimages/curl:latest",
+		"--overrides",
+		fmt.Sprintf(`{
+			"spec": {
+				"containers": [{
+					"name": "curl",
+					"image": "curlimages/curl:latest",
+					"command": ["/bin/sh", "-c"],
+					"args": ["curl -sS -k -H \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" https://%s.%s.svc.cluster.local:8443/metrics"],
+					"securityContext": {
+						"allowPrivilegeEscalation": false,
+						"capabilities": {"drop": ["ALL"]},
+						"runAsNonRoot": true,
+						"runAsUser": 1000,
+						"seccompProfile": {"type": "RuntimeDefault"}
+					}
+				}],
+				"serviceAccountName": "%s"
+			}
+		}`, metricsServiceName, namespace, serviceAccountName))
+	_, err := utils.Run(cmd)
+	Expect(err).ShouldNot(HaveOccurred())
+
+	return podName
+}
+
 // getPod retrieves a Pod by name and namespace and decodes it. It fails the test via g if the get or decode fails.
 func getPod(g Gomega, ns, name string) *corev1.Pod {
 	cmd := exec.Command("kubectl", "get", "pod", name, "-n", ns, "-o", "json")

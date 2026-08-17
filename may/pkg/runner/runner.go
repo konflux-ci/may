@@ -11,12 +11,12 @@ import (
 const (
 	ConditionTypeReady string = "Ready"
 
-	ConditionReasonReady          string = "Ready"
-	ConditionReasonInitializing   string = "Initializing"
-	ConditionReasonCleaning       string = "Cleaning"
-	ConditionReasonStopped        string = "Stopped"
-	ConditionReasonFailed         string = "Failed"
-	ConditionReasonCleaningFailed string = "CleaningFailed"
+	ConditionReasonReady                string = "Ready"
+	ConditionReasonInitializing         string = "Initializing"
+	ConditionReasonCleaning             string = "Cleaning"
+	ConditionReasonStopped              string = "Stopped"
+	ConditionReasonInitializationFailed string = "InitializationFailed"
+	ConditionReasonCleaningFailed       string = "CleaningFailed"
 
 	FieldStatusReady   string = "status.ready"
 	FieldIsStatusReady string = "status.is-ready"
@@ -62,8 +62,8 @@ func IsInitializing(runner maykonfluxcidevv1alpha1.Runner) bool {
 	return IsNotReadyWithReason(runner, ConditionReasonInitializing)
 }
 
-func IsFailed(runner maykonfluxcidevv1alpha1.Runner) bool {
-	return IsNotReadyWithReason(runner, ConditionReasonFailed)
+func IsInitializationFailed(runner maykonfluxcidevv1alpha1.Runner) bool {
+	return IsNotReadyWithReason(runner, ConditionReasonInitializationFailed)
 }
 
 func SetReady(runner *maykonfluxcidevv1alpha1.Runner) bool {
@@ -84,11 +84,11 @@ func SetNotReady(runner *maykonfluxcidevv1alpha1.Runner, reason, message string)
 	})
 }
 
-func SetNotReadyFailed(runner *maykonfluxcidevv1alpha1.Runner, message string) bool {
+func SetNotReadyInitializationFailed(runner *maykonfluxcidevv1alpha1.Runner, message string) bool {
 	return apimeta.SetStatusCondition(&runner.Status.Conditions, metav1.Condition{
 		Type:    ConditionTypeReady,
 		Status:  metav1.ConditionFalse,
-		Reason:  ConditionReasonFailed,
+		Reason:  ConditionReasonInitializationFailed,
 		Message: message,
 	})
 }
