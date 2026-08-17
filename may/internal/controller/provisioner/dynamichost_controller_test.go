@@ -25,18 +25,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
-)
-
-var (
-	// pending  = maykonfluxcidevv1alpha1.HostActualStatePending
-	ready = maykonfluxcidevv1alpha1.HostActualStateReady
-	// draining = maykonfluxcidevv1alpha1.HostActualStateDraining
-	// drained  = maykonfluxcidevv1alpha1.HostActualStateDrained
+	runner "github.com/konflux-ci/may/pkg/runner"
 )
 
 var _ = Describe("DynamicHost Controller", func() {
@@ -93,11 +88,9 @@ var _ = Describe("DynamicHost Controller", func() {
 			}
 
 			By("Cleanup the specific resource instance DynamicHost")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-
-			// Since we don't have a controller manager, we need to manually Reconcile
-			// in order for finalizers to run.
+			Expect(k8sClient.Delete(ctx, resource)).NotTo(HaveOccurred())
 			Expect(_reconcile(ctx, typeNamespacedName)).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(HaveOccurred())
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
@@ -115,24 +108,40 @@ var _ = Describe("DynamicHost Controller", func() {
 		})
 
 		It("should allocate a Runner", func() {
-			By("Creating a Runner object when a DynamicHost object's status is Ready")
+			By(`Creating a Runner object when no Runner object already exists 
+				and the DynamicHost's status is Ready`)
 
-			err := _reconcile(ctx, typeNamespacedName)
-			Expect(err).NotTo(HaveOccurred())
+			Expect(_reconcile(ctx, typeNamespacedName)).NotTo(HaveOccurred())
 
 			dynamicHost := &maykonfluxcidevv1alpha1.DynamicHost{}
-			err = k8sClient.Get(ctx, typeNamespacedName, dynamicHost)
-			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, dynamicHost)).NotTo(HaveOccurred())
 
-			dynamicHost.Status.State = &ready
-			err = k8sClient.Status().Update(ctx, dynamicHost)
-			Expect(err).NotTo(HaveOccurred())
-			err = _reconcile(ctx, typeNamespacedName)
-			Expect(err).NotTo(HaveOccurred())
+			dynamicHost.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStateReady)
+			Expect(k8sClient.Status().Update(ctx, dynamicHost)).NotTo(HaveOccurred())
+			Expect(_reconcile(ctx, typeNamespacedName)).NotTo(HaveOccurred())
 
-			runner := &maykonfluxcidevv1alpha1.Runner{}
-			err = k8sClient.Get(ctx, typeNamespacedName, runner)
-			Expect(err).NotTo(HaveOccurred())
+			By("updating the DynamicHost if the Runner's status is Ready")
+			r := &maykonfluxcidevv1alpha1.Runner{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, r)).NotTo(HaveOccurred())
+			Expect(runner.SetReady(r)).To(BeTrue())
+			Expect(k8sClient.Status().Update(ctx, r)).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, r)).NotTo(HaveOccurred())
+			Expect(r.Status.Conditions).NotTo(BeEmpty())
+			Expect(_reconcile(ctx, typeNamespacedName)).NotTo(HaveOccurred())
+
+			By("updating the DynamicHost if the Runner has a Pipeline")
+			r.Labels["tekton.dev/pipeline"] = "test-pipeline"
+			Expect(k8sClient.Update(ctx, r)).NotTo(HaveOccurred())
+
+			Expect(_reconcile(ctx, typeNamespacedName)).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, dynamicHost)).NotTo(HaveOccurred())
+			Expect(dynamicHost.Status.Pipeline).To(Equal("test-pipeline"))
+
+			By("updating the DynamicHost if the Runner is marked for deletion")
+			Expect(k8sClient.Delete(ctx, r)).NotTo(HaveOccurred())
+			Expect(_reconcile(ctx, typeNamespacedName)).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, dynamicHost)).NotTo(HaveOccurred())
+			Expect(*dynamicHost.Status.State).To(Equal(maykonfluxcidevv1alpha1.HostActualStateDraining))
 		})
 	})
 })
