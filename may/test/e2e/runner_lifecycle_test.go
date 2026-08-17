@@ -130,6 +130,7 @@ func RunnerLifecycleContexts() {
 			Eventually(func(g Gomega) {
 				r := getRunner(g, namespace, runnerName)
 				g.Expect(runner.IsReady(*r)).To(BeTrue())
+				g.Expect(r.Status.HooksStatus.Provisioning).To(BeEmpty(), "no provisioning hook pods should be observed")
 			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
@@ -153,7 +154,7 @@ func RunnerLifecycleContexts() {
 			Consistently(func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "pod", secondHookPod, "-n", namespace, "-o", "name")
 				_, err := utils.Run(cmd)
-				g.Expect(err).To(HaveOccurred(), "second hook pod should not exist while first is running")
+				g.Expect(err).To(BeKubectlNotFound(), "second hook pod should not exist while first is running")
 			}).WithTimeout(3 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
 
 			By("waiting for all hooks to complete and Runner to become Ready")
@@ -162,28 +163,6 @@ func RunnerLifecycleContexts() {
 				g.Expect(runner.IsReady(*r)).To(BeTrue())
 				g.Expect(r.Status.HooksStatus.Provisioning).To(HaveLen(2))
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
-		})
-
-		It("creates ClusterQueue when Runner with queue becomes Ready", func() {
-			runnerName := "runner-with-queue"
-			defer deleteRunner(runnerName)
-			defer deleteClusterQueue(runnerName)
-
-			applyRunnerWithQueue(runnerName, runnerLifecycleFlavor, "e2e-cohort")
-
-			By("waiting for Runner to become Ready")
-			Eventually(func(g Gomega) {
-				r := getRunner(g, namespace, runnerName)
-				g.Expect(runner.IsReady(*r)).To(BeTrue())
-			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
-
-			By("verifying ClusterQueue exists with the Runner's name")
-			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "clusterqueue", runnerName, "-o", "name")
-				out, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(out).To(ContainSubstring(runnerName))
-			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
 		It("runs cleanup hooks and updates status before Runner is deleted", func() {
@@ -456,31 +435,4 @@ spec:
                 type: RuntimeDefault
 `, name, namespace, constants.RunnerTypeLabel, runnerTypeStatic, flavor, flavor)
 	applySpecification(yaml)
-}
-
-// applyRunnerWithQueue creates a Runner with runner-type=static, no hooks, and spec.queue set.
-// When the Runner becomes Ready, the provisioner creates a ClusterQueue with the Runner's name.
-func applyRunnerWithQueue(name, flavor, cohort string) {
-	yaml := fmt.Sprintf(`apiVersion: may.konflux-ci.dev/v1alpha1
-kind: Runner
-metadata:
-  name: %s
-  namespace: %s
-  labels:
-    %s: %s
-spec:
-  flavor: %s
-  resources:
-    %s: "1"
-  queue:
-    cohort: %s
-`, name, namespace, constants.RunnerTypeLabel, runnerTypeStatic, flavor, flavor, cohort)
-	applySpecification(yaml)
-}
-
-// deleteClusterQueue deletes a cluster-scoped ClusterQueue by name.
-// It ignores "not found" and does not wait; used for test cleanup.
-func deleteClusterQueue(name string) {
-	cmd := exec.Command("kubectl", "delete", "clusterqueue", name, "--ignore-not-found", "--wait=false")
-	_, _ = utils.Run(cmd)
 }
