@@ -120,6 +120,51 @@ func RunnerLifecycleContexts() {
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
+		It("initializes Runner without hooks directly to Ready", func() {
+			runnerName := "runner-no-hooks"
+			defer deleteRunner(runnerName)
+
+			applyRunnerWithoutHooks(runnerName, runnerLifecycleFlavor)
+
+			By("waiting for Runner to become Ready without any hook pods")
+			Eventually(func(g Gomega) {
+				r := getRunner(g, namespace, runnerName)
+				g.Expect(runner.IsReady(*r)).To(BeTrue())
+				g.Expect(r.Status.HooksStatus.Provisioning).To(BeEmpty(), "no provisioning hook pods should be observed")
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+		})
+
+		It("runs multiple provisioning hooks sequentially", func() {
+			runnerName := "runner-multi-hooks"
+			defer deleteRunner(runnerName)
+
+			applyRunnerWithMultipleProvisioningHooks(runnerName, runnerLifecycleFlavor)
+
+			By("waiting for first hook pod to be created")
+			firstHookPod := "p-" + runnerName + "-setup-first"
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pod", firstHookPod, "-n", namespace, "-o", "name")
+				out, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(out).To(ContainSubstring(firstHookPod))
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("verifying second hook pod is not created while first is running")
+			secondHookPod := "p-" + runnerName + "-setup-second"
+			Consistently(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pod", secondHookPod, "-n", namespace, "-o", "name")
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(BeKubectlNotFound(), "second hook pod should not exist while first is running")
+			}).WithTimeout(3 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
+
+			By("waiting for all hooks to complete and Runner to become Ready")
+			Eventually(func(g Gomega) {
+				r := getRunner(g, namespace, runnerName)
+				g.Expect(runner.IsReady(*r)).To(BeTrue())
+				g.Expect(r.Status.HooksStatus.Provisioning).To(HaveLen(2))
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+		})
+
 		It("marks Runner as InitializationFailed when provisioning hook fails", func() {
 			runnerName := "runner-init-failed"
 			defer deleteRunner(runnerName)
@@ -376,6 +421,85 @@ spec:
           - name: main
             image: busybox:1.36
             command: ["sh", "-c", "exit 1"]
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+`, name, namespace, constants.RunnerTypeLabel, runnerTypeStatic, flavor, flavor)
+	applySpecification(yaml)
+}
+
+// applyRunnerWithoutHooks creates a Runner with runner-type=static and no hooks.
+// The provisioner initializes it directly to Ready without creating any hook pods.
+func applyRunnerWithoutHooks(name, flavor string) {
+	yaml := fmt.Sprintf(`apiVersion: may.konflux-ci.dev/v1alpha1
+kind: Runner
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    %s: %s
+spec:
+  flavor: %s
+  resources:
+    %s: "1"
+`, name, namespace, constants.RunnerTypeLabel, runnerTypeStatic, flavor, flavor)
+	applySpecification(yaml)
+}
+
+// applyRunnerWithMultipleProvisioningHooks creates a Runner with runner-type=static and two
+// provisioning hooks that run sequentially. The first hook sleeps briefly so the test can
+// observe that the second hook is not created until the first completes.
+func applyRunnerWithMultipleProvisioningHooks(name, flavor string) {
+	yaml := fmt.Sprintf(`apiVersion: may.konflux-ci.dev/v1alpha1
+kind: Runner
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    %s: %s
+spec:
+  flavor: %s
+  resources:
+    %s: "1"
+  hooks:
+    provisioning:
+    - name: setup-first
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+          - name: main
+            image: busybox:1.36
+            command: ["sh", "-c", "sleep 5"]
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+    - name: setup-second
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+          - name: main
+            image: busybox:1.36
+            command: ["true"]
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
