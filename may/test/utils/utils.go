@@ -150,6 +150,52 @@ func UninstallOTPServer() {
 	}
 }
 
+// GetKueueCRDDir returns the absolute path to the Kueue CRD bases directory inside the
+// sigs.k8s.io/kueue module (same version as go.mod). Used to install only the Kueue CRDs
+// (e.g. ClusterQueue) in e2e, mirroring what the integration suite loads via envtest.
+func GetKueueCRDDir() (string, error) {
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "sigs.k8s.io/kueue")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to locate sigs.k8s.io/kueue module: %w", err)
+	}
+	moduleDir := strings.TrimSpace(out.String())
+	return filepath.Join(moduleDir, "config", "components", "crd", "bases"), nil
+}
+
+// InstallKueueCRDs installs the Kueue CRDs from the sigs.k8s.io/kueue module so the may
+// controller can create and delete ClusterQueue objects in e2e. Only the CRDs are installed
+// (no Kueue controller or webhooks), matching what the integration suite uses. Server-side
+// apply avoids the client-side "annotations too long" error on Kueue's large CRDs.
+func InstallKueueCRDs() error {
+	crdDir, err := GetKueueCRDDir()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command("kubectl", "apply", "--server-side", "-f", crdDir)
+	_, err = Run(cmd)
+	return err
+}
+
+// UninstallKueueCRDs removes the Kueue CRDs installed by InstallKueueCRDs.
+func UninstallKueueCRDs() {
+	crdDir, err := GetKueueCRDDir()
+	if err != nil {
+		warnError(err)
+		return
+	}
+	cmd := exec.Command("kubectl", "delete", "-f", crdDir, "--ignore-not-found", "--timeout", "60s")
+	if _, err := Run(cmd); err != nil {
+		warnError(err)
+	}
+}
+
+// IsKueueCRDsInstalled checks whether the Kueue ClusterQueue CRD is present on the cluster.
+func IsKueueCRDsInstalled() bool {
+	return CheckCRDs([]string{"clusterqueues.kueue.x-k8s.io"})
+}
+
 // IsCertManagerCRDsInstalled checks if any Cert Manager CRDs are installed
 // by verifying the existence of key CRDs related to Cert Manager.
 func IsCertManagerCRDsInstalled() bool {
