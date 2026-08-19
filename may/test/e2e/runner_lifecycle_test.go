@@ -337,7 +337,7 @@ func RunnerLifecycleContexts() {
 				name:    runnerName,
 				flavor:  runnerLifecycleFlavor,
 				cohort:  runnerLifecycleCohort,
-				cleanup: []runnerHook{{name: "teardown", command: `["true"]`}},
+				cleanup: []runnerHook{{name: "teardown", command: `["sh", "-c", "sleep 10"]`}},
 			}.apply()
 
 			By("waiting for Runner to become Ready and the ClusterQueue to be created")
