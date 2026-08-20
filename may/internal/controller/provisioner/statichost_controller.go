@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -113,8 +114,8 @@ func (r *StaticHostReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, r.ensureHostIsDraining(ctx, h, rr)
 
 	case maykonfluxcidevv1alpha1.HostActualStateDrained:
-		// TODO(@konflux-ci): ensure all runners were deleted
-		panic("not implemented")
+		// nothing to do
+		return ctrl.Result{}, nil
 
 	default:
 		l.Info("invalid status: skipping reconciliation", "status", *h.Status.State)
@@ -139,6 +140,8 @@ func (r *StaticHostReconciler) ensureHostIsDraining(
 	l := logf.FromContext(ctx).WithValues("host", client.ObjectKeyFromObject(&host))
 	errs := []error{}
 
+	totalDeleted := 0
+
 	for _, ru := range runners.Items {
 		if ru.Spec.InUseBy != nil {
 			continue
@@ -146,17 +149,31 @@ func (r *StaticHostReconciler) ensureHostIsDraining(
 
 		err := r.Delete(ctx, &ru)
 		if kerrors.IsNotFound(err) {
+			// the runner got deleted between when we listed runners and when we started processing them,
+			// so consider it deleted for the purposes of moving into the `Drained` state
+			totalDeleted += 1
 			continue
-		}
-		if err != nil {
+		} else if err != nil {
 			l.Error(err, "failed to delete runner", "runner", client.ObjectKeyFromObject(&ru))
 			errs = append(errs, err)
 			continue
 		}
+
+		totalDeleted += 1
 		runnersDeleted.Inc()
 	}
 
-	return errors.Join(errs...)
+	if err := errors.Join(errs...); err != nil {
+		return err
+	}
+
+	// if we've deleted all associated runners, then it's safe to move to the drained state
+	if totalDeleted == len(runners.Items) {
+		host.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStateDrained)
+		return r.Status().Update(ctx, &host)
+	}
+
+	return nil
 }
 
 func (r *StaticHostReconciler) ensureRunnersInfoIsInStatus(ctx context.Context, h maykonfluxcidevv1alpha1.StaticHost, rr maykonfluxcidevv1alpha1.RunnerList) (bool, error) {

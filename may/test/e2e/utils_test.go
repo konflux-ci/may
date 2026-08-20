@@ -170,7 +170,12 @@ func applySpecification(specification string) {
 // kubectl apply -f - --subresource=status. The Specification must include the resource
 // identity (apiVersion, kind, metadata) and status.
 func applySpecificationStatus(yaml string) {
-	cmd := exec.Command("kubectl", "apply", "-f", "-", "--subresource=status", "--server-side")
+	// Controllers should always take ownership of fields they write to. Set the `--force-conflicts`
+	// flag so that server-side applies of the status subresource succeed even if the controller has
+	// taken ownership of some fields.
+	//
+	// For more info, see https://kubernetes.io/docs/reference/using-api/server-side-apply/
+	cmd := exec.Command("kubectl", "apply", "-f", "-", "--subresource=status", "--server-side", "--force-conflicts")
 	cmd.Stdin = strings.NewReader(yaml)
 	_, err := utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "failed to apply status subresource")
