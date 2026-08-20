@@ -403,6 +403,20 @@ func getRunnerOrErr(g Gomega, ns, name string) (*v1alpha1.Runner, error) {
 	return &r, nil
 }
 
+// getClusterQueueOrErr returns the ClusterQueue's name output if it exists, or an error
+// (BeKubectlNotFound when absent). ClusterQueue is cluster-scoped, so no namespace is used.
+func getClusterQueueOrErr(name string) (string, error) {
+	cmd := exec.Command("kubectl", "get", "clusterqueue", name, "-o", "name")
+	return utils.Run(cmd)
+}
+
+// deleteClusterQueue deletes the cluster-scoped ClusterQueue with the given name; used for
+// test cleanup. It ignores "not found" and does not wait for completion.
+func deleteClusterQueue(name string) {
+	cmd := exec.Command("kubectl", "delete", "clusterqueue", name, "--ignore-not-found", "--wait=false")
+	_, _ = utils.Run(cmd)
+}
+
 // staticHostYAML returns the YAML for a StaticHost with the given spec. statusState controls
 // status.state: use "" for no status (controller waits for driver), "Pending", or "Ready".
 // rootKeyName is required by the API; use a placeholder if the test does not need it.
