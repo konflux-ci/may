@@ -51,6 +51,7 @@ const (
 	runnerLifecycleNamespace = "e2e-runner-lifecycle"
 	runnerLifecycleFlavor    = "e2e-runner-lifecycle-flavor"
 	runnerTypeStatic         = "static"
+	runnerLifecycleCohort    = "e2e-runner-lifecycle-cohort"
 )
 
 // Claimer test context

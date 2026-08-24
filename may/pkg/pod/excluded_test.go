@@ -35,6 +35,7 @@ var _ = Describe("IsExcludedFlavor", func() {
 		},
 		Entry("localhost is excluded", "localhost", true),
 		Entry("local is excluded", "local", true),
+		Entry("linux-x86-64 is excluded", "linux-x86-64", true),
 		Entry("aws-linux-amd64 is not excluded", "aws-linux-amd64", false),
 		Entry("aws-linux-arm64 is not excluded", "aws-linux-arm64", false),
 		Entry("empty string is not excluded", "", false),

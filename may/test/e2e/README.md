@@ -54,6 +54,8 @@ Tests run in two contexts: a **tenant** namespace (labeled `konflux-ci.dev/type=
 
 Tests do **not** involve StaticHost; Runners are created by the test (simulating an external driver). May only observes and uses Runners.
 
+The ClusterQueue cases require the Kueue **ClusterQueue** CRD, which the e2e suite installs from the `sigs.k8s.io/kueue` module in `BeforeSuite` and uninstalls in `AfterSuite`. Only the CRDs the controller manages are installed (no Kueue controller or webhooks); the set is defined by a list in `test/utils/utils.go`, so adding another Kueue CRD is a one-line change. Use `KUEUE_INSTALL_SKIP=true` to skip install when the CRD is already present.
+
 | Case | Description |
 |------|-------------|
 | Runner with no condition left untouched | A Runner with no Ready condition is left unchanged by may; may waits for a driver to set the Runner to Ready before considering it for scheduling |
@@ -61,6 +63,8 @@ Tests do **not** involve StaticHost; Runners are created by the test (simulating
 | Runner provisioning hooks | Provisioning hook pods run and status is updated |
 | Runner cleanup hooks | Cleanup hook pods run and status is updated before Runner is deleted |
 | Runner not deleted when cleaning failed | When cleanup (e.g. release/finalizer) fails, the Runner is not deleted; may leaves it for the driver or operator to handle; test cleanup removes finalizers so the Runner can be deleted |
+| ClusterQueue created when Runner becomes Ready | A Runner with `spec.queue` and the runner-type label creates a ClusterQueue named after the Runner once it reaches Ready |
+| ClusterQueue and Runner deleted through finalize | Deleting a Runner with `spec.queue` runs the full finalize flow: Cleaning → cleanup hooks succeed → ClusterQueue deleted → finalizer removed → Runner deleted |
 
 ## 7. RunnerBinder (Runner → Pod credentials) ✅
 
@@ -147,7 +151,7 @@ The DynamicHost provisioner watches Pending Claims and creates a DynamicHost per
 
 ## Implementation status
 
-- **Done:** Manager run, metrics, cert-manager, webhook CA, Pod webhook (tenant and non-tenant namespace cases; see `e2e_test.go` and `pod_webhook_test.go`), Claimer (tenant and non-tenant cases; see `claimer_test.go`), Claim/Scheduler (Claim scheduled, Claim pending, single Runner two Claims, Claim deletion; see `scheduler_test.go`), Gater (gate removed when Claimed, gate remains when Pending; see `gater_test.go`), Runner Lifecycle (Runner untouched without condition, Runner reserved, provisioning hooks, cleanup hooks, Runner not deleted when cleaning failed; see `runner_lifecycle_test.go`), RunnerBinder (Secret and Pod config; see `binder_test.go`), Full Flow (happy path and Pod completion in one test; see `full_flow_test.go`), StaticHost (all cases; see `statichost_test.go`), DynamicHost (all cases; see `dynamichost_test.go`), DynamicHostAutoscaler (no DynamicHost when no Autoscaler matches flavor, creates DynamicHost when Autoscaler matches, one DynamicHost per Pending Claim, GC deletes Drained DynamicHosts; see `dynamichostautoscaler_test.go`). OTP server from multi-platform-controller is installed in the e2e cluster for RunnerBinder.
+- **Done:** Manager run, metrics, cert-manager, webhook CA, Pod webhook (tenant and non-tenant namespace cases; see `e2e_test.go` and `pod_webhook_test.go`), Claimer (tenant and non-tenant cases; see `claimer_test.go`), Claim/Scheduler (Claim scheduled, Claim pending, single Runner two Claims, Claim deletion; see `scheduler_test.go`), Gater (gate removed when Claimed, gate remains when Pending; see `gater_test.go`), Runner Lifecycle (Runner untouched without condition, Runner reserved, provisioning hooks, cleanup hooks, Runner not deleted when cleaning failed, ClusterQueue created when Runner becomes Ready, ClusterQueue and Runner deleted through finalize; see `runner_lifecycle_test.go`), RunnerBinder (Secret and Pod config; see `binder_test.go`), Full Flow (happy path and Pod completion in one test; see `full_flow_test.go`), StaticHost (all cases; see `statichost_test.go`), DynamicHost (all cases; see `dynamichost_test.go`), DynamicHostAutoscaler (no DynamicHost when no Autoscaler matches flavor, creates DynamicHost when Autoscaler matches, one DynamicHost per Pending Claim, GC deletes Drained DynamicHosts; see `dynamichostautoscaler_test.go`). OTP server from multi-platform-controller is installed in the e2e cluster for RunnerBinder.
 - **TODO:** Edge cases, multi-namespace / configuration, integration.
 
 ## Running E2E tests
