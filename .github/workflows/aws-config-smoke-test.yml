@@ -1,0 +1,98 @@
+# End-to-end smoke test for the AWS CI configuration created by Terraform
+# (konflux-infrastructure/manual-terraform/may).
+#
+# It exercises the whole config against real AWS: assume the role via OIDC,
+# launch a tagged EC2 instance into the CI subnet + security group, then
+# terminate it. This proves both IAM paths work:
+#   - create: RunInstances/CreateTags (unconditional)
+#   - terminate: TerminateInstances, allowed only because the instance is
+#     tagged MultiPlatformManaged=true at launch.
+#
+# A cleanup step always runs so a failure mid-way never leaks a running
+# instance. It does not depend on the driver code, so it can run before the
+# instance-tagging change lands in the driver.
+#
+# The role ARN, subnet, security group, and AMI come from repository Actions
+# variables so they can change without editing the workflow:
+#   MAY_CI_ROLE_ARN, MAY_CI_SUBNET_ID, MAY_CI_SECURITY_GROUP_ID, MAY_CI_AMI_ID
+# (Set them under Settings > Secrets and variables > Actions > Variables.)
+# Region is hardcoded, as MPC's test-e2e.yml does.
+name: aws-config-smoke-test
+
+on:
+  workflow_dispatch:
+  # Running on PRs that touch this file also exercises the `pull_request`
+  # branch of the role's OIDC trust policy.
+  pull_request:
+    paths:
+      - .github/workflows/aws-config-smoke-test.yml
+
+permissions:
+  id-token: write # required for the GitHub OIDC token
+  contents: read
+
+env:
+  AWS_ROLE_ARN: ${{ vars.MAY_CI_ROLE_ARN }}
+  AWS_REGION: us-east-1
+  INSTANCE_TYPE: t3.micro
+  SUBNET_ID: ${{ vars.MAY_CI_SUBNET_ID }}
+  SECURITY_GROUP_ID: ${{ vars.MAY_CI_SECURITY_GROUP_ID }}
+  AMI_ID: ${{ vars.MAY_CI_AMI_ID }}
+  # Tag used to find and clean up this run's instance.
+  RUN_TAG: may-smoke-${{ github.run_id }}
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assume the MAY CI role via OIDC
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Confirm assumed identity
+        run: aws sts get-caller-identity
+
+      - name: Launch a tagged test instance
+        run: |
+          set -euo pipefail
+          instance_id=$(aws ec2 run-instances \
+            --image-id "$AMI_ID" \
+            --instance-type "$INSTANCE_TYPE" \
+            --subnet-id "$SUBNET_ID" \
+            --security-group-ids "$SECURITY_GROUP_ID" \
+            --tag-specifications "ResourceType=instance,Tags=[{Key=MultiPlatformManaged,Value=true},{Key=Name,Value=$RUN_TAG}]" \
+            --query 'Instances[0].InstanceId' --output text)
+          echo "Launched $instance_id"
+          echo "INSTANCE_ID=$instance_id" >> "$GITHUB_ENV"
+
+      - name: Confirm the instance exists and is tagged
+        run: |
+          set -euo pipefail
+          aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].{State:State.Name,Managed:Tags[?Key==`MultiPlatformManaged`]|[0].Value}' \
+            --output table
+
+      - name: Terminate the test instance (validates the tag-scoped guard)
+        run: |
+          set -euo pipefail
+          aws ec2 terminate-instances --instance-ids "$INSTANCE_ID" \
+            --query 'TerminatingInstances[0].{Id:InstanceId,State:CurrentState.Name}' --output table
+
+      - name: Cleanup — ensure no instance from this run is left running
+        if: always()
+        run: |
+          set -uo pipefail
+          # Terminate by the run-scoped Name tag, covering the case where an
+          # earlier step failed before/around the terminate step.
+          ids=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=$RUN_TAG" \
+                      "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+            --query 'Reservations[].Instances[].InstanceId' --output text || true)
+          if [ -n "${ids:-}" ]; then
+            echo "Cleaning up leftover instances: $ids"
+            aws ec2 terminate-instances --instance-ids $ids || true
+          else
+            echo "No leftover instances to clean up."
+          fi
