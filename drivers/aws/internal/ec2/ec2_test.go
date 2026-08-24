@@ -396,9 +396,9 @@ var _ = Describe("SSHReadyOnPublicIP", func() {
 		})
 
 		gotPublicIP, ready, err := client.SSHReadyOnPublicIP(context.Background(), instanceID)
-		Expect(err).ShouldNot(HaveOccurred())
+		Expect(err).Should(MatchError(ContainSubstring("ssh probe to")))
 		Expect(ready).Should(BeFalse())
-		Expect(gotPublicIP).Should(Equal(publicIP))
+		Expect(gotPublicIP).Should(BeZero())
 	})
 
 	It("returns context cancellation from the SSH probe", func() {
@@ -416,7 +416,7 @@ var _ = Describe("SSHReadyOnPublicIP", func() {
 		gotPublicIP, ready, err := client.SSHReadyOnPublicIP(ctx, instanceID)
 		Expect(err).Should(MatchError(context.Canceled))
 		Expect(ready).Should(BeFalse())
-		Expect(gotPublicIP).Should(Equal(publicIP))
+		Expect(gotPublicIP).Should(BeZero())
 	})
 
 	It("errors when the instance terminates before becoming ready", func(ctx context.Context) {
@@ -444,7 +444,7 @@ var _ = Describe("SSHReadyOnPublicIP", func() {
 		gotPublicIP, ready, err := client.SSHReadyOnPublicIP(ctx, instanceID)
 		Expect(err).Should(MatchError(ContainSubstring("shutting-down")))
 		Expect(ready).Should(BeFalse())
-		Expect(gotPublicIP).Should(Equal(publicIP))
+		Expect(gotPublicIP).Should(BeZero())
 	})
 
 	It("errors when the instance is stopped before becoming ready", func(ctx context.Context) {
@@ -462,7 +462,7 @@ var _ = Describe("SSHReadyOnPublicIP", func() {
 			ContainSubstring("not running"),
 		)))
 		Expect(ready).Should(BeFalse())
-		Expect(gotPublicIP).Should(Equal(publicIP))
+		Expect(gotPublicIP).Should(BeZero())
 	})
 
 	It("errors when the instance is stopping before becoming ready", func(ctx context.Context) {

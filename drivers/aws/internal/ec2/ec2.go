@@ -93,7 +93,7 @@ func (c *Client) DescribeInstance(ctx context.Context, instanceID string) (Insta
 }
 
 // SSHReadyOnPublicIP reports whether instanceID is running, has a public IP, and accepts SSH.
-func (c *Client) SSHReadyOnPublicIP(ctx context.Context, instanceID string) (publicIP string, ready bool, err error) {
+func (c *Client) SSHReadyOnPublicIP(ctx context.Context, instanceID string) (string, bool, error) {
 	details, err := c.DescribeInstance(ctx, instanceID)
 	if err != nil {
 		return "", false, err
@@ -101,23 +101,23 @@ func (c *Client) SSHReadyOnPublicIP(ctx context.Context, instanceID string) (pub
 
 	switch details.State {
 	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated:
-		return details.PublicIP, false, fmt.Errorf("EC2 instance %s is %s before becoming ready", instanceID, details.State)
+		return "", false, fmt.Errorf("EC2 instance %s is %s before becoming ready", instanceID, details.State)
 	case types.InstanceStateNameStopping, types.InstanceStateNameStopped:
-		return details.PublicIP, false, fmt.Errorf("EC2 instance %s is %s and is not running", instanceID, details.State)
+		return "", false, fmt.Errorf("EC2 instance %s is %s and is not running", instanceID, details.State)
 	case types.InstanceStateNameRunning:
-		// continue below
+		return c.sshReadyOnPublicIPRunning(ctx, details)
 	default:
 		return details.PublicIP, false, nil
 	}
+}
 
+func (c *Client) sshReadyOnPublicIPRunning(ctx context.Context, details InstanceDetails) (string, bool, error) {
 	if details.PublicIP == "" {
 		return "", false, nil
 	}
+
 	if err := SSHPortOpen(ctx, details.PublicIP); err != nil {
-		if ctx.Err() != nil {
-			return details.PublicIP, false, ctx.Err()
-		}
-		return details.PublicIP, false, nil
+		return "", false, err
 	}
 
 	return details.PublicIP, true, nil

@@ -18,6 +18,7 @@ package ec2
 
 import (
 	"context"
+	"net"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -31,10 +32,9 @@ var _ = Describe("SSHPortOpen", func() {
 			defer cancel()
 
 			err := SSHPortOpen(ctx, host)
-			Expect(err).Should(MatchError(And(
-				ContainSubstring("ssh probe to"),
-				ContainSubstring(":22"),
-			)))
+			Expect(err).Should(MatchError(
+				HavePrefix("ssh probe to " + net.JoinHostPort(host, sshPort) + ": "),
+			))
 		},
 		Entry("invalid IP address", "999.999.999.999"),
 		Entry("invalid hostname", "not-a-host"),
