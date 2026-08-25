@@ -93,6 +93,39 @@ func getMetricsOutput() (string, error) {
 	return utils.Run(cmd)
 }
 
+// createMetricsCurlPod creates a temporary curl pod that scrapes the metrics endpoint and returns its name.
+// The caller is responsible for waiting (e.g. waitForPodSucceeded), reading logs, and cleanup.
+func createMetricsCurlPod() string {
+	podName := fmt.Sprintf("curl-metrics-%d", time.Now().UnixNano())
+
+	cmd := exec.Command("kubectl", "run", podName, "--restart=Never",
+		"--namespace", namespace,
+		"--image=curlimages/curl:latest",
+		"--overrides",
+		fmt.Sprintf(`{
+			"spec": {
+				"containers": [{
+					"name": "curl",
+					"image": "curlimages/curl:latest",
+					"command": ["/bin/sh", "-c"],
+					"args": ["curl -sS -k -H \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" https://%s.%s.svc.cluster.local:8443/metrics"],
+					"securityContext": {
+						"allowPrivilegeEscalation": false,
+						"capabilities": {"drop": ["ALL"]},
+						"runAsNonRoot": true,
+						"runAsUser": 1000,
+						"seccompProfile": {"type": "RuntimeDefault"}
+					}
+				}],
+				"serviceAccountName": "%s"
+			}
+		}`, metricsServiceName, namespace, serviceAccountName))
+	_, err := utils.Run(cmd)
+	Expect(err).ShouldNot(HaveOccurred())
+
+	return podName
+}
+
 // getPod retrieves a Pod by name and namespace and decodes it. It fails the test via g if the get or decode fails.
 func getPod(g Gomega, ns, name string) *corev1.Pod {
 	cmd := exec.Command("kubectl", "get", "pod", name, "-n", ns, "-o", "json")
@@ -368,6 +401,20 @@ func getRunnerOrErr(g Gomega, ns, name string) (*v1alpha1.Runner, error) {
 	var r v1alpha1.Runner
 	g.Expect(json.Unmarshal([]byte(output), &r)).To(Succeed())
 	return &r, nil
+}
+
+// getClusterQueueOrErr returns the ClusterQueue's name output if it exists, or an error
+// (BeKubectlNotFound when absent). ClusterQueue is cluster-scoped, so no namespace is used.
+func getClusterQueueOrErr(name string) (string, error) {
+	cmd := exec.Command("kubectl", "get", "clusterqueue", name, "-o", "name")
+	return utils.Run(cmd)
+}
+
+// deleteClusterQueue deletes the cluster-scoped ClusterQueue with the given name; used for
+// test cleanup. It ignores "not found" and does not wait for completion.
+func deleteClusterQueue(name string) {
+	cmd := exec.Command("kubectl", "delete", "clusterqueue", name, "--ignore-not-found", "--wait=false")
+	_, _ = utils.Run(cmd)
 }
 
 // staticHostYAML returns the YAML for a StaticHost with the given spec. statusState controls
