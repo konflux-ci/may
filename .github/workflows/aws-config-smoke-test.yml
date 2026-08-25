@@ -13,10 +13,11 @@
 # instance-tagging change lands in the driver.
 #
 # The role ARN, subnet, security group, and AMI come from repository Actions
-# variables so they can change without editing the workflow:
+# secrets so their values are masked (***) in the workflow logs:
 #   MAY_CI_ROLE_ARN, MAY_CI_SUBNET_ID, MAY_CI_SECURITY_GROUP_ID, MAY_CI_AMI_ID
-# (Set them under Settings > Secrets and variables > Actions > Variables.)
-# Region is hardcoded, as MPC's test-e2e.yml does.
+# (Set them under Settings > Secrets and variables > Actions > Secrets.)
+# These are identifiers, not credentials; they live in secrets only to keep
+# them out of the logs. Region is hardcoded, as MPC's test-e2e.yml does.
 name: aws-config-smoke-test
 
 on:
@@ -31,12 +32,12 @@ permissions:
   contents: read
 
 env:
-  AWS_ROLE_ARN: ${{ vars.MAY_CI_ROLE_ARN }}
+  AWS_ROLE_ARN: ${{ secrets.MAY_CI_ROLE_ARN }}
   AWS_REGION: us-east-1
   INSTANCE_TYPE: t3.micro
-  SUBNET_ID: ${{ vars.MAY_CI_SUBNET_ID }}
-  SECURITY_GROUP_ID: ${{ vars.MAY_CI_SECURITY_GROUP_ID }}
-  AMI_ID: ${{ vars.MAY_CI_AMI_ID }}
+  SUBNET_ID: ${{ secrets.MAY_CI_SUBNET_ID }}
+  SECURITY_GROUP_ID: ${{ secrets.MAY_CI_SECURITY_GROUP_ID }}
+  AMI_ID: ${{ secrets.MAY_CI_AMI_ID }}
   # Tag used to find and clean up this run's instance.
   RUN_TAG: may-smoke-${{ github.run_id }}
 
