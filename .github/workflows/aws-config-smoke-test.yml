@@ -21,9 +21,15 @@ name: aws-config-smoke-test
 
 on:
   workflow_dispatch:
-  # Running on PRs that touch this file also exercises the `pull_request`
-  # branch of the role's OIDC trust policy.
-  pull_request:
+  # pull_request_target runs in the base-repo context, so it gets the OIDC
+  # id-token and repo variables that a fork's pull_request event does not.
+  # Safe here ONLY because this workflow never checks out or runs PR code — it
+  # runs a fixed set of AWS CLI commands defined on the base branch. Do NOT add
+  # a checkout of the PR head to this workflow without a maintainer-approval
+  # gate; that would run untrusted fork code with these credentials.
+  # Note: the workflow definition used is the one on the base branch, not the
+  # PR, so this file must exist on the target branch to trigger.
+  pull_request_target:
     paths:
       - .github/workflows/aws-config-smoke-test.yml
 
