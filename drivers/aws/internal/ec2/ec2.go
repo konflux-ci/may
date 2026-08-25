@@ -163,6 +163,17 @@ func buildRunInstancesInput(cfg internalconfig.AWSConfiguration) *awsec2.RunInst
 		InstanceType: types.InstanceType(cfg.InstanceType),
 		MinCount:     aws.Int32(1),
 		MaxCount:     aws.Int32(1),
+		TagSpecifications: []types.TagSpecification{
+			{
+				ResourceType: types.ResourceTypeInstance,
+				Tags: []types.Tag{
+					{
+						Key:   aws.String("MultiPlatformManaged"),
+						Value: aws.String("true"),
+					},
+				},
+			},
+		},
 	}
 
 	if cfg.KeyName != "" {
