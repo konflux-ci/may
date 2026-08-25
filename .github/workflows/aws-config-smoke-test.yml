@@ -21,15 +21,8 @@ name: aws-config-smoke-test
 
 on:
   workflow_dispatch:
-  # pull_request_target runs in the base-repo context, so it gets the OIDC
-  # id-token and repo variables that a fork's pull_request event does not.
-  # Safe here ONLY because this workflow never checks out or runs PR code — it
-  # runs a fixed set of AWS CLI commands defined on the base branch. Do NOT add
-  # a checkout of the PR head to this workflow without a maintainer-approval
-  # gate; that would run untrusted fork code with these credentials.
-  # Note: the workflow definition used is the one on the base branch, not the
-  # PR, so this file must exist on the target branch to trigger.
-  pull_request_target:
+  pull_request:
+    types: [opened, synchronize, reopened]
     paths:
       - .github/workflows/aws-config-smoke-test.yml
 
@@ -50,6 +43,19 @@ env:
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    # Only run for trusted sources. Fork PRs from non-collaborators are skipped
+    # because they don't receive the OIDC id-token or repo variables (same gate
+    # MPC's test-e2e.yml uses):
+    #   - any non-PR event (workflow_dispatch), or
+    #   - a same-repo PR, or
+    #   - a fork PR whose author owns the fork AND is an OWNER/MEMBER/COLLABORATOR.
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository ||
+      (
+        github.event.pull_request.user.login == github.event.pull_request.head.repo.owner.login &&
+        contains(fromJson('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+      )
     steps:
       - name: Assume the MAY CI role via OIDC
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
