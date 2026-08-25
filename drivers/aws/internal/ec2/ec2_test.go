@@ -396,7 +396,7 @@ var _ = Describe("SSHReadyOnPublicIP", func() {
 		})
 
 		gotPublicIP, ready, err := client.SSHReadyOnPublicIP(context.Background(), instanceID)
-		Expect(err).Should(MatchError(ContainSubstring("ssh probe to")))
+		Expect(err).ShouldNot(HaveOccurred())
 		Expect(ready).Should(BeFalse())
 		Expect(gotPublicIP).Should(BeZero())
 	})

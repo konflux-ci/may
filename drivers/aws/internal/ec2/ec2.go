@@ -117,7 +117,10 @@ func (c *Client) sshReadyOnPublicIPRunning(ctx context.Context, details Instance
 	}
 
 	if err := SSHPortOpen(ctx, details.PublicIP); err != nil {
-		return "", false, err
+		if ctx.Err() != nil {
+			return "", false, ctx.Err()
+		}
+		return "", false, nil
 	}
 
 	return details.PublicIP, true, nil
