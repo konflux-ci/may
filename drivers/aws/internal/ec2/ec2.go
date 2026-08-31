@@ -61,11 +61,11 @@ func (c *Client) LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfi
 // InstanceDetails holds EC2 instance fields used by the driver.
 type InstanceDetails struct {
 	State    types.InstanceStateName
-	PublicIP string
+	Address  string
 }
 
 // DescribeInstance returns driver-relevant details for instanceID.
-func (c *Client) DescribeInstance(ctx context.Context, instanceID string) (InstanceDetails, error) {
+func (c *Client) DescribeInstance(ctx context.Context, instanceID string, strictPublicAddress bool) (InstanceDetails, error) {
 	out, err := c.api.DescribeInstances(ctx, &awsec2.DescribeInstancesInput{
 		InstanceIds: []string{instanceID},
 	})
@@ -78,12 +78,11 @@ func (c *Client) DescribeInstance(ctx context.Context, instanceID string) (Insta
 			if instance.InstanceId == nil || aws.ToString(instance.InstanceId) != instanceID {
 				continue
 			}
-			details := InstanceDetails{}
+			details := InstanceDetails{
+				Address: instanceSSHAddress(instance, strictPublicAddress),
+			}
 			if instance.State != nil {
 				details.State = instance.State.Name
-			}
-			if instance.PublicIpAddress != nil {
-				details.PublicIP = aws.ToString(instance.PublicIpAddress)
 			}
 			return details, nil
 		}
@@ -92,38 +91,51 @@ func (c *Client) DescribeInstance(ctx context.Context, instanceID string) (Insta
 	return InstanceDetails{}, fmt.Errorf("DescribeInstances: instance %q not found", instanceID)
 }
 
-// SSHReadyOnPublicIP reports whether instanceID is running, has a public IP, and accepts SSH.
-func (c *Client) SSHReadyOnPublicIP(ctx context.Context, instanceID string) (string, bool, error) {
-	details, err := c.DescribeInstance(ctx, instanceID)
+func instanceSSHAddress(instance types.Instance, strictPublicAddress bool) string {
+	if instance.PublicDnsName != nil && *instance.PublicDnsName != "" {
+		return *instance.PublicDnsName
+	}
+	if instance.PublicIpAddress != nil && *instance.PublicIpAddress != "" {
+		return *instance.PublicIpAddress
+	}
+	if instance.PrivateIpAddress != nil && *instance.PrivateIpAddress != "" && !strictPublicAddress {
+		return *instance.PrivateIpAddress
+	}
+	return ""
+}
+
+// SSHReady reports whether instanceID is running, has an SSH address, and accepts SSH.
+func (c *Client) SSHReady(ctx context.Context, instanceID string, strictPublicAddress bool) (string, bool, error) {
+	details, err := c.DescribeInstance(ctx, instanceID, strictPublicAddress)
 	if err != nil {
 		return "", false, err
 	}
 
 	switch details.State {
 	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated:
-		return "", false, fmt.Errorf("EC2 instance %s is %s before becoming ready", instanceID, details.State)
+		return "", false, fmt.Errorf("EC2 instance %s is %s", instanceID, details.State)
 	case types.InstanceStateNameStopping, types.InstanceStateNameStopped:
 		return "", false, fmt.Errorf("EC2 instance %s is %s and is not running", instanceID, details.State)
 	case types.InstanceStateNameRunning:
-		return c.sshReadyOnPublicIPRunning(ctx, details)
+		return c.sshReadyRunning(ctx, details)
 	default:
-		return details.PublicIP, false, nil
+		return details.Address, false, nil
 	}
 }
 
-func (c *Client) sshReadyOnPublicIPRunning(ctx context.Context, details InstanceDetails) (string, bool, error) {
-	if details.PublicIP == "" {
+func (c *Client) sshReadyRunning(ctx context.Context, details InstanceDetails) (string, bool, error) {
+	if details.Address == "" {
 		return "", false, nil
 	}
 
-	if err := SSHPortOpen(ctx, details.PublicIP); err != nil {
+	if err := SSHPortOpen(ctx, details.Address); err != nil {
 		if ctx.Err() != nil {
 			return "", false, ctx.Err()
 		}
 		return "", false, nil
 	}
 
-	return details.PublicIP, true, nil
+	return details.Address, true, nil
 }
 
 // TerminateInstance requests termination of the given EC2 instance.
@@ -187,6 +199,7 @@ func buildRunInstancesInput(cfg internalconfig.AWSConfiguration) *awsec2.RunInst
 		input.UserData = aws.String(base64.StdEncoding.EncodeToString([]byte(*cfg.UserData)))
 	}
 
+	// Attach an IAM instance profile when configured; ARN takes precedence over name.
 	if cfg.InstanceProfileArn != "" || cfg.InstanceProfileName != "" {
 		profile := &types.IamInstanceProfileSpecification{}
 		if cfg.InstanceProfileArn != "" {
@@ -262,10 +275,9 @@ func buildRunInstancesInput(cfg internalconfig.AWSConfiguration) *awsec2.RunInst
 		return input
 	}
 
-	switch {
-	case cfg.SecurityGroupId != "":
+	if cfg.SecurityGroupId != "" {
 		input.SecurityGroupIds = []string{cfg.SecurityGroupId}
-	case cfg.SecurityGroup != "":
+	} else if cfg.SecurityGroup != "" {
 		input.SecurityGroups = []string{cfg.SecurityGroup}
 	}
 

@@ -19,7 +19,6 @@ package ec2
 import (
 	"context"
 	"net"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -27,10 +26,7 @@ import (
 
 var _ = Describe("SSHPortOpen", func() {
 	DescribeTable("returns a wrapped error when the SSH port is unreachable",
-		func(host string) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-			defer cancel()
-
+		func(ctx context.Context, host string) {
 			err := SSHPortOpen(ctx, host)
 			Expect(err).Should(MatchError(
 				HavePrefix("ssh probe to " + net.JoinHostPort(host, sshPort) + ": "),
