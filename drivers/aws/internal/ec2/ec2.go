@@ -104,7 +104,14 @@ func instanceSSHAddress(instance types.Instance, strictPublicAddress bool) strin
 	return ""
 }
 
-// SSHReady reports whether instanceID is running, has an SSH address, and accepts SSH.
+// SSHReady checks whether instanceID is ready for SSH.
+// It is intended to be called once per reconciliation.
+//
+// Returns the SSH address, whether the instance is ready, and any error.
+// When ready is false and err is nil, the instance is not ready yet (for example
+// pending or running without an SSH address).
+// A non-nil err indicates a terminal or unrecoverable condition (for example
+// stopped/terminated instance, SSH probe failure, or canceled context).
 func (c *Client) SSHReady(ctx context.Context, instanceID string, strictPublicAddress bool) (string, bool, error) {
 	details, err := c.DescribeInstance(ctx, instanceID, strictPublicAddress)
 	if err != nil {
@@ -129,10 +136,7 @@ func (c *Client) sshReadyRunning(ctx context.Context, details InstanceDetails) (
 	}
 
 	if err := SSHPortOpen(ctx, details.Address); err != nil {
-		if ctx.Err() != nil {
-			return "", false, ctx.Err()
-		}
-		return "", false, nil
+		return "", false, err
 	}
 
 	return details.Address, true, nil

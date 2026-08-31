@@ -420,7 +420,7 @@ var _ = Describe("SSHReady", func() {
 		Expect(address).Should(BeEmpty())
 	})
 
-	It("waits while SSH is not reachable on the address", func() {
+	It("returns an SSH probe error when the address is unreachable", func() {
 		instanceID := "i-ssh-unreachable"
 		// Invalid IP fails the probe quickly without waiting for a TCP timeout.
 		address := "999.999.999.999"
@@ -431,7 +431,7 @@ var _ = Describe("SSHReady", func() {
 		})
 
 		gotAddress, ready, err := client.SSHReady(context.Background(), instanceID, false)
-		Expect(err).ShouldNot(HaveOccurred())
+		Expect(err).Should(MatchError(ContainSubstring("ssh probe to " + address + ":22")))
 		Expect(ready).Should(BeFalse())
 		Expect(gotAddress).Should(BeZero())
 	})
