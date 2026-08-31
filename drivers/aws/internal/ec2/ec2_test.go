@@ -51,19 +51,13 @@ func newMockClient(api *mockEC2API) *Client {
 	return &Client{api: api}
 }
 
-func instanceOutput(instanceID string, state types.InstanceStateName, publicDNS, publicIP, privateIP string) *awsec2.DescribeInstancesOutput {
+func instanceOutput(instanceID string, state types.InstanceStateName, publicIP string) *awsec2.DescribeInstancesOutput {
 	instance := types.Instance{
 		InstanceId: aws.String(instanceID),
 		State:      &types.InstanceState{Name: state},
 	}
-	if publicDNS != "" {
-		instance.PublicDnsName = aws.String(publicDNS)
-	}
 	if publicIP != "" {
 		instance.PublicIpAddress = aws.String(publicIP)
-	}
-	if privateIP != "" {
-		instance.PrivateIpAddress = aws.String(privateIP)
 	}
 	return &awsec2.DescribeInstancesOutput{
 		Reservations: []types.Reservation{
@@ -337,7 +331,7 @@ var _ = Describe("DescribeInstance", func() {
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(_ context.Context, input *awsec2.DescribeInstancesInput, _ ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
 				Expect(input.InstanceIds).Should(Equal([]string{instanceID}))
-				return instanceOutput(instanceID, types.InstanceStateNameRunning, "", address, ""), nil
+				return instanceOutput(instanceID, types.InstanceStateNameRunning, address), nil
 			},
 		})
 
@@ -402,7 +396,7 @@ var _ = Describe("SSHReady", func() {
 		instanceID := "i-ssh-pending"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput(instanceID, types.InstanceStateNamePending, "", "", ""), nil
+				return instanceOutput(instanceID, types.InstanceStateNamePending, ""), nil
 			},
 		})
 
@@ -416,7 +410,7 @@ var _ = Describe("SSHReady", func() {
 		instanceID := "i-ssh-no-address"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput(instanceID, types.InstanceStateNameRunning, "", "", ""), nil
+				return instanceOutput(instanceID, types.InstanceStateNameRunning, ""), nil
 			},
 		})
 
@@ -432,7 +426,7 @@ var _ = Describe("SSHReady", func() {
 		address := "999.999.999.999"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput(instanceID, types.InstanceStateNameRunning, "", address, ""), nil
+				return instanceOutput(instanceID, types.InstanceStateNameRunning, address), nil
 			},
 		})
 
@@ -447,7 +441,7 @@ var _ = Describe("SSHReady", func() {
 		address := "999.999.999.999"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput(instanceID, types.InstanceStateNameRunning, "", address, ""), nil
+				return instanceOutput(instanceID, types.InstanceStateNameRunning, address), nil
 			},
 		})
 
@@ -464,7 +458,7 @@ var _ = Describe("SSHReady", func() {
 		instanceID := "i-ssh-terminated"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput(instanceID, types.InstanceStateNameTerminated, "", "", ""), nil
+				return instanceOutput(instanceID, types.InstanceStateNameTerminated, ""), nil
 			},
 		})
 
@@ -478,7 +472,7 @@ var _ = Describe("SSHReady", func() {
 		address := "203.0.113.11"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput(instanceID, types.InstanceStateNameShuttingDown, "", address, ""), nil
+				return instanceOutput(instanceID, types.InstanceStateNameShuttingDown, address), nil
 			},
 		})
 
@@ -493,7 +487,7 @@ var _ = Describe("SSHReady", func() {
 		address := "203.0.113.12"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput(instanceID, types.InstanceStateNameStopped, "", address, ""), nil
+				return instanceOutput(instanceID, types.InstanceStateNameStopped, address), nil
 			},
 		})
 
@@ -510,7 +504,7 @@ var _ = Describe("SSHReady", func() {
 		instanceID := "i-ssh-stopping"
 		client := newMockClient(&mockEC2API{
 			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
-				return instanceOutput(instanceID, types.InstanceStateNameStopping, "", "", ""), nil
+				return instanceOutput(instanceID, types.InstanceStateNameStopping, ""), nil
 			},
 		})
 
