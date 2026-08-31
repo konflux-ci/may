@@ -300,8 +300,8 @@ var _ = Describe("LaunchInstance", func() {
 var _ = Describe("instanceSSHAddress", func() {
 	It("prefers public DNS over public IP", func() {
 		address := instanceSSHAddress(types.Instance{
-			PublicDnsName:   aws.String("ec2-1-2-3-4.compute.amazonaws.com"),
-			PublicIpAddress: aws.String("203.0.113.10"),
+			PublicDnsName:    aws.String("ec2-1-2-3-4.compute.amazonaws.com"),
+			PublicIpAddress:  aws.String("203.0.113.10"),
 			PrivateIpAddress: aws.String("10.0.0.5"),
 		}, false)
 		Expect(address).Should(Equal("ec2-1-2-3-4.compute.amazonaws.com"))
@@ -309,7 +309,7 @@ var _ = Describe("instanceSSHAddress", func() {
 
 	It("uses public IP when DNS is absent", func() {
 		address := instanceSSHAddress(types.Instance{
-			PublicIpAddress: aws.String("203.0.113.10"),
+			PublicIpAddress:  aws.String("203.0.113.10"),
 			PrivateIpAddress: aws.String("10.0.0.5"),
 		}, false)
 		Expect(address).Should(Equal("203.0.113.10"))

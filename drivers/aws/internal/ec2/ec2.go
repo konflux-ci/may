@@ -60,8 +60,8 @@ func (c *Client) LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfi
 
 // InstanceDetails holds EC2 instance fields used by the driver.
 type InstanceDetails struct {
-	State    types.InstanceStateName
-	Address  string
+	State   types.InstanceStateName
+	Address string
 }
 
 // DescribeInstance returns driver-relevant details for instanceID.
