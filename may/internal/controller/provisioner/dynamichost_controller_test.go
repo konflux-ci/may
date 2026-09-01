@@ -25,7 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -116,7 +115,7 @@ var _ = Describe("DynamicHost Controller", func() {
 			dynamicHost := &maykonfluxcidevv1alpha1.DynamicHost{}
 			Expect(k8sClient.Get(ctx, typeNamespacedName, dynamicHost)).NotTo(HaveOccurred())
 
-			dynamicHost.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStateReady)
+			dynamicHost.Status.State = new(maykonfluxcidevv1alpha1.HostActualStateReady)
 			Expect(k8sClient.Status().Update(ctx, dynamicHost)).NotTo(HaveOccurred())
 			Expect(_reconcile(ctx, typeNamespacedName)).NotTo(HaveOccurred())
 
