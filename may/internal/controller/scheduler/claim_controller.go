@@ -209,7 +209,7 @@ func (r *ClaimReconciler) ensureRunnerIsDeleted(ctx context.Context, u maykonflu
 			return err
 		}
 
-		runnerDeleted.Inc()
+		claimRunnerDeletions.Inc()
 		return nil
 	}
 
