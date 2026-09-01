@@ -28,7 +28,6 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	"github.com/konflux-ci/may/pkg/claim"
@@ -210,7 +209,7 @@ func StaticHostContexts() {
 			By("asserting the host is in the drained state")
 			Eventually(func(g Gomega) {
 				h := getStaticHost(g, namespace, staticHostName)
-				g.Expect(h.Status.State).To(Equal(ptr.To(maykonfluxcidevv1alpha1.HostActualStateDrained)))
+				g.Expect(h.Status.State).To(Equal(new(maykonfluxcidevv1alpha1.HostActualStateDrained)))
 			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
@@ -261,7 +260,7 @@ func StaticHostContexts() {
 				time.Sleep(5 * time.Second)
 				Eventually(func(g Gomega) {
 					host := getStaticHost(g, namespace, staticHostName)
-					g.Expect(host.Status.State).To(Equal(ptr.To(maykonfluxcidevv1alpha1.HostActualStateDraining)))
+					g.Expect(host.Status.State).To(Equal(new(maykonfluxcidevv1alpha1.HostActualStateDraining)))
 				}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 
 				By("deleting pods to simulate pod completion")
@@ -271,7 +270,7 @@ func StaticHostContexts() {
 				By("expecting the static host to move to drained")
 				Eventually(func(g Gomega) {
 					host := getStaticHost(g, namespace, staticHostName)
-					g.Expect(host.Status.State).To(Equal(ptr.To(maykonfluxcidevv1alpha1.HostActualStateDrained)))
+					g.Expect(host.Status.State).To(Equal(new(maykonfluxcidevv1alpha1.HostActualStateDrained)))
 				}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 			})
 		})

@@ -29,7 +29,6 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -106,7 +105,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 										Containers: []corev1.Container{
 											{
 												Name:          "provisioning-container",
-												RestartPolicy: ptr.To(corev1.ContainerRestartPolicyNever),
+												RestartPolicy: new(corev1.ContainerRestartPolicyNever),
 												Image:         image,
 												Command:       []string{"exit"},
 												Args:          []string{"0"},
@@ -123,7 +122,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 										Containers: []corev1.Container{
 											{
 												Name:          "provisioning-container",
-												RestartPolicy: ptr.To(corev1.ContainerRestartPolicyNever),
+												RestartPolicy: new(corev1.ContainerRestartPolicyNever),
 												Image:         image,
 												Command:       []string{"exit"},
 												Args:          []string{"0"},
@@ -566,7 +565,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 										Containers: []corev1.Container{
 											{
 												Name:          "provisioning-container",
-												RestartPolicy: ptr.To(corev1.ContainerRestartPolicyNever),
+												RestartPolicy: new(corev1.ContainerRestartPolicyNever),
 												Image:         image,
 												Command:       []string{"exit"},
 												Args:          []string{"1"},
@@ -730,7 +729,7 @@ var _ = Describe("Runner Controller (Provisioning)", Ordered, Serial, func() {
 									Containers: []corev1.Container{
 										{
 											Name:          "provisioning-container",
-											RestartPolicy: ptr.To(corev1.ContainerRestartPolicyNever),
+											RestartPolicy: new(corev1.ContainerRestartPolicyNever),
 											Image:         image,
 											Command:       []string{"exit"},
 											Args:          []string{"0"},

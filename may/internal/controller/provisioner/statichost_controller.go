@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -141,7 +140,7 @@ func (r *StaticHostReconciler) ensureHostIsDraining(
 
 	// if we have no runners, move to the drained state
 	if len(runners.Items) == 0 {
-		host.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStateDrained)
+		host.Status.State = new(maykonfluxcidevv1alpha1.HostActualStateDrained)
 		return r.Status().Update(ctx, &host)
 	}
 
