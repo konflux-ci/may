@@ -262,7 +262,7 @@ var _ = Describe("Host Controller", func() {
 			})
 
 			It("should drain all unclaimed runners", func(ctx context.Context) {
-				By("Reconciling the created resource")
+				By("Reconciling the host")
 				Expect(controllerReconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: typeNamespacedName,
 				})).Error().NotTo(HaveOccurred())
@@ -270,6 +270,15 @@ var _ = Describe("Host Controller", func() {
 				By("Asserting all runners are deleted")
 				runners := fetchRunners(ctx, k8sClient, typeNamespacedName)
 				Expect(runners.Items).To(BeEmpty())
+
+				By("Reconciling the host again")
+				Expect(controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})).Error().NotTo(HaveOccurred())
+
+				By("Asserting the host has moved to the drained state")
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(host), host)).To(Succeed())
+				Expect(host.Status.State).To(Equal(ptr.To(mayprovkonfluxcidevv1alpha1.HostActualStateDrained)))
 			})
 
 			When("runners are claimed", func() {
@@ -298,6 +307,10 @@ var _ = Describe("Host Controller", func() {
 					Expect(controllerReconciler.Reconcile(ctx, reconcile.Request{
 						NamespacedName: typeNamespacedName,
 					})).Error().NotTo(HaveOccurred())
+					Expect(k8sClient.Get(ctx, typeNamespacedName, host)).To(Succeed())
+					Expect(host.Status.Runners.Ready).To(Equal(0))
+					Expect(host.Status.Runners.Stopped).To(Equal(0))
+
 					Expect(controllerReconciler.Reconcile(ctx, reconcile.Request{
 						NamespacedName: typeNamespacedName,
 					})).Error().NotTo(HaveOccurred())
@@ -314,6 +327,12 @@ var _ = Describe("Host Controller", func() {
 					By("Asserting a runner still exists")
 					runners := fetchRunners(ctx, k8sClient, typeNamespacedName)
 					Expect(runners.Items).To(HaveLen(1))
+				})
+
+				It("should remain in the draining state", func(ctx context.Context) {
+					By("Asserting the host is in the draining state")
+					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(host), host)).To(Succeed())
+					Expect(host.Status.State).To(Equal(ptr.To(mayprovkonfluxcidevv1alpha1.HostActualStateDraining)))
 				})
 			})
 
@@ -429,6 +448,25 @@ var _ = Describe("Host Controller", func() {
 					value := testutil.ToFloat64(runnersDeleted)
 					Expect(value).To(Equal(oldValue))
 				})
+			})
+		})
+
+		When("Host is drained", func() {
+			BeforeEach(func(ctx context.Context) {
+				By("Moving to the drained state")
+				host.Status.State = ptr.To(mayprovkonfluxcidevv1alpha1.HostActualStateDrained)
+				Expect(k8sClient.Status().Update(ctx, host)).To(Succeed())
+			})
+
+			It("should remain in the drained state", func(ctx context.Context) {
+				By("Reconciling the host")
+				Expect(controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})).Error().NotTo(HaveOccurred())
+
+				By("Asserting the host remains in the drained state")
+				Expect(k8sClient.Get(ctx, typeNamespacedName, host)).To(Succeed())
+				Expect(host.Status.State).To(Equal(ptr.To(mayprovkonfluxcidevv1alpha1.HostActualStateDrained)))
 			})
 		})
 	})

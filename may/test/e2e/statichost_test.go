@@ -28,7 +28,9 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
+	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	"github.com/konflux-ci/may/pkg/claim"
 	"github.com/konflux-ci/may/pkg/constants"
 	"github.com/konflux-ci/may/pkg/runner"
@@ -204,6 +206,12 @@ func StaticHostContexts() {
 					g.Expect(err).To(BeKubectlNotFound(), "Runner %s should be deleted", runnerName)
 				}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 			}
+
+			By("asserting the host is in the drained state")
+			Eventually(func(g Gomega) {
+				h := getStaticHost(g, namespace, staticHostName)
+				g.Expect(h.Status.State).To(Equal(ptr.To(maykonfluxcidevv1alpha1.HostActualStateDrained)))
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
 		It("recreates Runners when StaticHost state is Ready", func() {
@@ -228,6 +236,44 @@ func StaticHostContexts() {
 					g.Expect(ownerRef.Name).To(Equal(staticHostName))
 				}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 			}
+		})
+
+		When("the host moves to draining before runners are complete", func() {
+			It("should wait for runner completion", func() {
+				podA := "statichost-pipeline-pod-a"
+				podB := "statichost-pipeline-pod-b"
+				By("creating Pods with flavor annotation and tekton.dev/pipeline label (MAY propagates to Claim then Runner)")
+				createPodWithFlavorAndLabels(podA, statichostTestNamespace, statichostFlavor, map[string]string{"tekton.dev/pipeline": statichostPipelineA})
+				createPodWithFlavorAndLabels(podB, statichostTestNamespace, statichostFlavor, map[string]string{"tekton.dev/pipeline": statichostPipelineB})
+
+				By("waiting for Claims to be created and scheduled so Runners get pipeline label from MAY")
+				Eventually(func(g Gomega) {
+					cA := getClaim(g, statichostTestNamespace, podA)
+					g.Expect(claim.IsClaimed(*cA)).To(BeTrue(), "Claim for pod-a should be Claimed")
+					cB := getClaim(g, statichostTestNamespace, podB)
+					g.Expect(claim.IsClaimed(*cB)).To(BeTrue(), "Claim for pod-b should be Claimed")
+				}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+
+				By("draining the static host")
+				applySpecificationWithStatus(staticHostYAML(staticHostName, namespace, statichostFlavor, instances, statichostFlavor, statichostRootKeyName, "Draining"))
+
+				By("waiting to simulate jobs running")
+				time.Sleep(5 * time.Second)
+				Eventually(func(g Gomega) {
+					host := getStaticHost(g, namespace, staticHostName)
+					g.Expect(host.Status.State).To(Equal(ptr.To(maykonfluxcidevv1alpha1.HostActualStateDraining)))
+				}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+
+				By("deleting pods to simulate pod completion")
+				deletePod(statichostTestNamespace, podA)
+				deletePod(statichostTestNamespace, podB)
+
+				By("expecting the static host to move to drained")
+				Eventually(func(g Gomega) {
+					host := getStaticHost(g, namespace, staticHostName)
+					g.Expect(host.Status.State).To(Equal(ptr.To(maykonfluxcidevv1alpha1.HostActualStateDrained)))
+				}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+			})
 		})
 
 		It("deletes all Runners and removes finalizer when StaticHost is deleted", func() {
