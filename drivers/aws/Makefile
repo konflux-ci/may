@@ -91,6 +91,16 @@ test-e2e-coverage: setup-test-e2e manifests generate fmt vet ## Run the e2e test
 	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) ENABLE_COVERAGE=$(ENABLE_COVERAGE) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
 	@if [ "$(ENABLE_COVERAGE)" != "true" ]; then $(MAKE) cleanup-test-e2e; fi
 
+.PHONY: test-e2e-aws
+test-e2e-aws: setup-test-e2e manifests generate fmt vet ## Run the AWS e2e tests. Expected an isolated environment using Kind with AWS credentials.
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e_aws ./test/e2e/ -v -ginkgo.v
+	$(MAKE) cleanup-test-e2e
+
+.PHONY: test-e2e-aws-coverage
+test-e2e-aws-coverage: setup-test-e2e manifests generate fmt vet ## Run the AWS e2e tests with coverage. Expected an isolated environment using Kind with AWS credentials.
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) ENABLE_COVERAGE=$(ENABLE_COVERAGE) go test -tags=e2e_aws ./test/e2e/ -v -ginkgo.v
+	@if [ "$(ENABLE_COVERAGE)" != "true" ]; then $(MAKE) cleanup-test-e2e; fi
+
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
