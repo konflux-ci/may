@@ -1,0 +1,139 @@
+name: AWS Driver E2E Tests
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    branches: [ main ]
+
+  merge_group:
+    types: [checks_requested]
+
+  push:
+    branches: [ main ]
+
+permissions:
+  id-token: write
+
+env:
+  AWS_ROLE_ARN: ${{ secrets.MAY_CI_ROLE_ARN }}
+  AWS_REGION: us-east-1
+  AWS_ROLE_DURATION: 3600
+  ENABLE_COVERAGE: "true"
+
+jobs:
+  test-e2e-aws:
+    name: Run AWS Driver E2E
+    runs-on: ubuntu-latest
+    # Skip e2e tests for untrusted fork PRs (no access to the action's JWT token)
+    # Allow e2e tests if PR author owns the fork AND is an OWNER/MEMBER/COLLABORATOR
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository ||
+      (
+        github.event.pull_request.user.login == github.event.pull_request.head.repo.owner.login &&
+        contains(fromJson('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+      )
+
+    defaults:
+      run:
+        working-directory: "./drivers/aws"
+
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Mask AWS identifiers
+        run: |
+          echo "::add-mask::${{ secrets.MAY_CI_ROLE_ARN }}"
+          echo "::add-mask::${{ secrets.MAY_CI_SUBNET_ID }}"
+          echo "::add-mask::${{ secrets.MAY_CI_SECURITY_GROUP_ID }}"
+          echo "::add-mask::${{ secrets.MAY_CI_AMI_ID }}"
+          # Extract and mask account ID and role name from ARN
+          ACCOUNT_ID=$(echo "${{ secrets.MAY_CI_ROLE_ARN }}" | cut -d: -f5)
+          ROLE_NAME=$(echo "${{ secrets.MAY_CI_ROLE_ARN }}" | cut -d/ -f2)
+          echo "::add-mask::$ACCOUNT_ID"
+          echo "::add-mask::$ROLE_NAME"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: ${{ env.AWS_ROLE_DURATION }}
+
+      - name: Validate AWS Credentials and mask identifiers
+        run: |
+          IDENTITY=$(aws sts get-caller-identity)
+          USER_ID=$(echo "$IDENTITY" | jq -r '.UserId')
+          ACCOUNT=$(echo "$IDENTITY" | jq -r '.Account')
+          ROLE_UNIQUE_ID=$(echo "$USER_ID" | cut -d: -f1)
+          SESSION_NAME=$(echo "$USER_ID" | cut -d: -f2)
+          echo "::add-mask::$ROLE_UNIQUE_ID"
+          echo "::add-mask::$SESSION_NAME"
+          echo "Successfully assumed role in account $ACCOUNT"
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: "drivers/aws/go.mod"
+
+      - name: Install the latest version of kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Verify kind installation
+        run: kind version
+
+      - name: Run e2e tests with coverage instrumentation
+        env:
+          AWS_SUBNET_ID: ${{ secrets.MAY_CI_SUBNET_ID }}
+          AWS_SECURITY_GROUP_ID: ${{ secrets.MAY_CI_SECURITY_GROUP_ID }}
+          AWS_AMI_ID: ${{ secrets.MAY_CI_AMI_ID }}
+        run: |
+          go mod tidy
+          make test-e2e-aws-coverage
+
+      - name: Collect e2e coverage from instrumented pods
+        if: always()
+        run: |
+          mkdir -p coverage-output && chmod 700 coverage-output
+          cp $HOME/.kube/config /tmp/kubeconfig && chmod 400 /tmp/kubeconfig
+          podman run --rm \
+            --network host \
+            --userns=keep-id \
+            --user $(id -u):$(id -g) \
+            -v /tmp/kubeconfig:/kubeconfig:ro \
+            -v $PWD/coverage-output:/workspace/coverage-output \
+            -e KUBECONFIG=/kubeconfig \
+            quay.io/konflux-ci/konflux-devprod/coverport-cli@sha256:9a2d0a42fcc0dcea31c1b20b2752bb4dfe76f92a99314968e24f525c782a03f1 \
+            collect \
+              --namespace=driver-aws-system \
+              --label-selector=control-plane=controller-manager \
+              --test-name=e2e-tests \
+              --output=/workspace/coverage-output
+
+      - name: Prepare coverage for upload
+        if: always()
+        run: |
+          coverage_file=$(find coverage-output -name "coverage.out" -type f | head -1)
+          if [ -n "$coverage_file" ]; then
+            cp "$coverage_file" coverage-output/e2e-coverage.out
+            echo "Copied $coverage_file to coverage-output/e2e-coverage.out"
+          else
+            echo "::error::No coverage.out file found"
+            exit 1
+          fi
+
+      - name: Upload e2e coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
+        with:
+          use_oidc: true
+          flags: e2e-tests
+          files: drivers/aws/coverage-output/e2e-coverage.out
+          fail_ci_if_error: false
