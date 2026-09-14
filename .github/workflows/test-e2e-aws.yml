@@ -14,9 +14,6 @@ on:
   push:
     branches: [ main ]
 
-permissions:
-  id-token: write
-
 env:
   AWS_ROLE_ARN: ${{ secrets.MAY_CI_ROLE_ARN }}
   AWS_REGION: us-east-1
@@ -27,15 +24,12 @@ jobs:
   test-e2e-aws:
     name: Run AWS Driver E2E
     runs-on: ubuntu-latest
-    # Skip e2e tests for untrusted fork PRs (no access to the action's JWT token)
-    # Allow e2e tests if PR author owns the fork AND is an OWNER/MEMBER/COLLABORATOR
+    permissions:
+      id-token: write
+    # Trust gate: block all fork PRs (GitHub security prevents OIDC token access anyway)
     if: |
       github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository ||
-      (
-        github.event.pull_request.user.login == github.event.pull_request.head.repo.owner.login &&
-        contains(fromJson('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
-      )
+      github.event.pull_request.head.repo.full_name == github.repository
 
     defaults:
       run:
