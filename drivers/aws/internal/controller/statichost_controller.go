@@ -42,7 +42,7 @@ type StaticHostReconciler struct {
 	newEC2client    func(ctx context.Context, host *maykonfluxcidevv1alpha1.StaticHost) (hostEC2Client, error)
 }
 
-// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts/finalizers,verbs=update
 

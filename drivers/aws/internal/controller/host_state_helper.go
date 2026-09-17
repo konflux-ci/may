@@ -22,17 +22,16 @@ import (
 	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	internalconfig "github.com/konflux-ci/may/drivers/aws/internal/config"
 	internalec2 "github.com/konflux-ci/may/drivers/aws/internal/ec2"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type hostEC2Client interface {
-	LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfiguration) (string, error)
+	LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfiguration, clientToken string) (string, error)
 	DescribeInstance(ctx context.Context, instanceID string, strictPublicAddress bool) (internalec2.InstanceDetails, error)
 	SSHReady(ctx context.Context, instanceID string, strictPublicAddress bool) (string, bool, error)
 	TerminateInstance(ctx context.Context, instanceID string) error
@@ -43,6 +42,7 @@ type HostStateHelper struct {
 	client.Client
 }
 
+// EnsurePending is a no-op when the host is already Pending.
 func (h *HostStateHelper) EnsurePending(ctx context.Context, actualState maykonfluxcidevv1alpha1.HostActualState) (ctrl.Result, error) {
 	l := logf.FromContext(ctx)
 	switch actualState {
@@ -55,6 +55,7 @@ func (h *HostStateHelper) EnsurePending(ctx context.Context, actualState maykonf
 	}
 }
 
+// EnsureReady launches or verifies the EC2 instance when Ready is requested.
 func (h *HostStateHelper) EnsureReady(
 	ctx context.Context,
 	ec2 hostEC2Client,
@@ -80,6 +81,7 @@ func (h *HostStateHelper) EnsureReady(
 	}
 }
 
+// EnsureInstanceReady launches an instance if needed and waits until SSH is reachable.
 func (h *HostStateHelper) EnsureInstanceReady(
 	ctx context.Context,
 	ec2 hostEC2Client,
@@ -96,7 +98,7 @@ func (h *HostStateHelper) EnsureInstanceReady(
 
 	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceID]
 	if instanceID == "" {
-		instanceID, err = ec2.LaunchInstance(ctx, cfg)
+		instanceID, err = ec2.LaunchInstance(ctx, cfg, string(host.GetUID()))
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -137,6 +139,7 @@ func (h *HostStateHelper) EnsureInstanceReady(
 	return ctrl.Result{}, h.Status().Update(ctx, host)
 }
 
+// EnsureInstanceStillRunning reports an error if a Ready host's instance is not running.
 func (h *HostStateHelper) EnsureInstanceStillRunning(ctx context.Context, ec2 hostEC2Client, host client.Object, strictPublicAddress bool) (ctrl.Result, error) {
 	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceID]
 	if instanceID == "" {
@@ -186,6 +189,7 @@ func (h *HostStateHelper) EnsureInstanceTerminated(ctx context.Context, ec2 host
 	}
 }
 
+// SetInstanceMetadata patches the instance ID and SSH address onto the host.
 func (h *HostStateHelper) SetInstanceMetadata(ctx context.Context, host client.Object, instanceID, address string) error {
 	base := host.DeepCopyObject().(client.Object)
 	patch := client.MergeFrom(base)
@@ -199,6 +203,7 @@ func (h *HostStateHelper) SetInstanceMetadata(ctx context.Context, host client.O
 	return h.Patch(ctx, host, patch)
 }
 
+// SetInstanceID patches the instance ID onto the host.
 func (h *HostStateHelper) SetInstanceID(ctx context.Context, host client.Object, instanceID string) error {
 	base := host.DeepCopyObject().(client.Object)
 	patch := client.MergeFrom(base)

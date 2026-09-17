@@ -42,7 +42,7 @@ type DynamicHostReconciler struct {
 	newEC2client    func(ctx context.Context, host *maykonfluxcidevv1alpha1.DynamicHost) (hostEC2Client, error)
 }
 
-// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=dynamichosts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=dynamichosts,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=dynamichosts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=dynamichosts/finalizers,verbs=update
 

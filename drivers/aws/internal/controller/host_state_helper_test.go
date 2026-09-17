@@ -37,15 +37,15 @@ import (
 )
 
 type mockEC2Client struct {
-	launchInstance    func(context.Context, internalconfig.AWSConfiguration) (string, error)
+	launchInstance    func(context.Context, internalconfig.AWSConfiguration, string) (string, error)
 	describeInstance  func(context.Context, string, bool) (internalec2.InstanceDetails, error)
 	sshReady          func(context.Context, string, bool) (string, bool, error)
 	terminateInstance func(context.Context, string) error
 }
 
-func (m *mockEC2Client) LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfiguration) (string, error) {
+func (m *mockEC2Client) LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfiguration, clientToken string) (string, error) {
 	if m.launchInstance != nil {
-		return m.launchInstance(ctx, cfg)
+		return m.launchInstance(ctx, cfg, clientToken)
 	}
 	return "", nil
 }
@@ -121,6 +121,7 @@ var _ = Describe("HostStateHelper", func() {
 
 	It("launches an EC2 instance when Ready is requested", func(ctx context.Context) {
 		host := newTestStaticHost("launch-instance", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.UID = "host-uid-1"
 			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
 			h.Annotations = map[string]string{
 				internalconfig.AnnotationRegion:       "us-east-1",
@@ -129,8 +130,10 @@ var _ = Describe("HostStateHelper", func() {
 			}
 		})
 
+		var gotClientToken string
 		mockEC2 := &mockEC2Client{
-			launchInstance: func(context.Context, internalconfig.AWSConfiguration) (string, error) {
+			launchInstance: func(_ context.Context, _ internalconfig.AWSConfiguration, clientToken string) (string, error) {
+				gotClientToken = clientToken
 				return "i-launch001", nil
 			},
 		}
@@ -150,6 +153,7 @@ var _ = Describe("HostStateHelper", func() {
 		updated := &maykonfluxcidevv1alpha1.StaticHost{}
 		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
 		Expect(updated.Annotations[internalconfig.AnnotationInstanceID]).Should(Equal("i-launch001"))
+		Expect(gotClientToken).Should(Equal("host-uid-1"))
 	})
 
 	It("requeues while waiting for SSH readiness", func(ctx context.Context) {
@@ -283,7 +287,7 @@ var _ = Describe("HostStateHelper", func() {
 
 		expectedErr := errors.New("RunInstances: quota exceeded")
 		mockEC2 := &mockEC2Client{
-			launchInstance: func(context.Context, internalconfig.AWSConfiguration) (string, error) {
+			launchInstance: func(context.Context, internalconfig.AWSConfiguration, string) (string, error) {
 				return "", expectedErr
 			},
 		}
