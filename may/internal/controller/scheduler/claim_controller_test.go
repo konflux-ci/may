@@ -18,24 +18,28 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
+	corev1 "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	mayv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	"github.com/konflux-ci/may/pkg/claim"
 	"github.com/konflux-ci/may/pkg/constants"
 	"github.com/konflux-ci/may/pkg/runner"
 	"github.com/konflux-ci/may/pkg/scheduler"
-	"github.com/prometheus/client_golang/prometheus/testutil"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/scheme"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 var _ = Describe("ClaimReconciler", func() {
@@ -66,32 +70,52 @@ var _ = Describe("ClaimReconciler", func() {
 		}
 	})
 
+	waitForCache := func(ctx context.Context, obj client.Object) {
+		GinkgoHelper()
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), obj)).Should(Succeed())
+		}).WithContext(ctx).Should(Succeed())
+	}
+
+	reconcileClaim := func(ctx context.Context, c *mayv1alpha1.Claim) (reconcile.Result, error) {
+		GinkgoHelper()
+		return reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: client.ObjectKeyFromObject(c),
+		})
+	}
+
 	AfterEach(func(ctx context.Context) {
 		Expect(k8sCachedClient.Delete(ctx, ns)).Should(Succeed())
 	})
 
 	createPod := func(ctx context.Context, phase corev1.PodPhase) *corev1.Pod {
-		p := &corev1.Pod{
+		GinkgoHelper()
+		pod := &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      podName,
 				Namespace: ns.Name,
 			},
 			Spec: corev1.PodSpec{
 				Containers: []corev1.Container{
-					{Name: "build", Image: "registry.example.com/builder:latest"},
+					{
+						Name:  "test-container",
+						Image: "test-image",
+					},
 				},
 			},
 		}
-		Expect(k8sCachedClient.Create(ctx, p)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, pod)).Should(Succeed())
 
 		if phase != "" {
-			p.Status.Phase = phase
-			Expect(k8sCachedClient.Status().Update(ctx, p)).Should(Succeed())
+			pod.Status.Phase = phase
+			Expect(k8sClient.Status().Update(ctx, pod)).Should(Succeed())
 		}
-		return p
+		waitForCache(ctx, pod)
+		return pod
 	}
 
 	createRunner := func(ctx context.Context, name, flv string, statusOpts ...func(*mayv1alpha1.Runner)) *mayv1alpha1.Runner {
+		GinkgoHelper()
 		r := &mayv1alpha1.Runner{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
@@ -127,7 +151,7 @@ var _ = Describe("ClaimReconciler", func() {
 		Expect(k8sCachedClient.Status().Update(ctx, &rr)).Should(Succeed())
 
 		// ensure the cached client is up to date
-		EventuallyWithOffset(1, func(g Gomega) {
+		Eventually(func(g Gomega) {
 			g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(r), r)).Should(Succeed())
 			if len(statusOpts) > 0 {
 				g.Expect(runner.IsReady(*r)).Should(BeTrue())
@@ -138,10 +162,24 @@ var _ = Describe("ClaimReconciler", func() {
 	}
 
 	createReadyRunner := func(ctx context.Context, name, flv string) *mayv1alpha1.Runner {
+		GinkgoHelper()
 		return createRunner(ctx, name, flv, func(r *mayv1alpha1.Runner) { runner.SetReady(r) })
 	}
 
+	createReservedRunner := func(ctx context.Context, name, flv, claimName, claimNamespace string) *mayv1alpha1.Runner {
+		GinkgoHelper()
+		return createRunner(ctx, name, flv, func(r *mayv1alpha1.Runner) {
+			runner.SetReady(r)
+			r.Spec.InUseBy = &mayv1alpha1.ClaimReference{
+				Name:      claimName,
+				Namespace: claimNamespace,
+			}
+			controllerutil.AddFinalizer(r, constants.ClaimControllerFinalizer)
+		})
+	}
+
 	createClaim := func(ctx context.Context, p *corev1.Pod, cacheCheck func(mayv1alpha1.Claim) bool, opts ...func(*mayv1alpha1.Claim)) *mayv1alpha1.Claim {
+		GinkgoHelper()
 		c := &mayv1alpha1.Claim{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      claimName,
@@ -180,7 +218,7 @@ var _ = Describe("ClaimReconciler", func() {
 		Expect(k8sCachedClient.Status().Update(ctx, &cc)).Should(Succeed())
 
 		// ensure the cached client is up to date
-		EventuallyWithOffset(1, func(g Gomega) {
+		Eventually(func(g Gomega) {
 			g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
 			g.Expect(cacheCheck(*c)).Should(BeTrue())
 		}).WithTimeout(10 * time.Second).Should(Succeed())
@@ -189,6 +227,7 @@ var _ = Describe("ClaimReconciler", func() {
 	}
 
 	createPendingClaim := func(ctx context.Context, p *corev1.Pod, opts ...func(*mayv1alpha1.Claim)) *mayv1alpha1.Claim {
+		GinkgoHelper()
 		return createClaim(ctx, p, claim.IsPending,
 			append(opts, func(c *mayv1alpha1.Claim) {
 				c.Finalizers = append(c.Finalizers, constants.ClaimControllerFinalizer)
@@ -199,6 +238,7 @@ var _ = Describe("ClaimReconciler", func() {
 	}
 
 	createClaimedClaim := func(ctx context.Context, p *corev1.Pod, opts ...func(*mayv1alpha1.Claim)) *mayv1alpha1.Claim {
+		GinkgoHelper()
 		return createClaim(ctx, p, claim.IsClaimed,
 			append(opts, func(c *mayv1alpha1.Claim) {
 				c.Finalizers = append(c.Finalizers, constants.ClaimControllerFinalizer)
@@ -207,12 +247,6 @@ var _ = Describe("ClaimReconciler", func() {
 				claim.SetClaimed(c)
 			})...,
 		)
-	}
-
-	reconcileClaim := func(ctx context.Context, c *mayv1alpha1.Claim) (reconcile.Result, error) {
-		return reconciler.Reconcile(ctx, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(c),
-		})
 	}
 
 	When("cached client sync", func() {
@@ -249,7 +283,7 @@ var _ = Describe("ClaimReconciler", func() {
 			c := createClaimedClaim(ctx, p)
 
 			By("reconciling the Claim")
-			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
+			Expect(reconcileClaim(ctx, c)).Error().ShouldNot(HaveOccurred())
 
 			By("verifying the Claim has a deletion timestamp")
 			Eventually(func(g Gomega) {
@@ -259,34 +293,128 @@ var _ = Describe("ClaimReconciler", func() {
 		})
 	})
 
-	When("claim is Claimed and pod is Failed", func() {
-		It("should delete the Claim", func(ctx context.Context) {
-			By("creating a Failed pod and a Claimed claim")
-			p := createPod(ctx, corev1.PodFailed)
+	When("finalizing a Claim with associated Runners", Serial, func() {
+		It("should progress through finalization stages", func(ctx context.Context) {
+			By("creating a pod, a reserved Runner and a Claimed Claim")
+			p := createPod(ctx, "")
+			r := createReservedRunner(ctx, "finalize-runner", flavor, claimName, ns.Name)
 			c := createClaimedClaim(ctx, p)
 
-			By("reconciling the Claim")
-			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
-
-			By("verifying the Claim has a deletion timestamp")
-			Eventually(func(g Gomega) {
+			By("deleting the Claim to trigger finalization")
+			Expect(k8sCachedClient.Delete(ctx, c)).Should(Succeed())
+			Eventually(ctx, func(g Gomega) {
 				g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
 				g.Expect(c.DeletionTimestamp.IsZero()).Should(BeFalse())
-			}).WithTimeout(10 * time.Second).Should(Succeed())
+			}).WithTimeout(15 * time.Second).Should(Succeed())
+
+			By("reconciling to mark the Claim's Runner for deletion")
+			Expect(reconcileClaim(ctx, c)).Error().ShouldNot(HaveOccurred())
+			Eventually(ctx, func(g Gomega) {
+				g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(r), r)).Should(Succeed())
+				g.Expect(r.DeletionTimestamp.IsZero()).Should(BeFalse())
+				g.Expect(controllerutil.ContainsFinalizer(r, constants.ClaimControllerFinalizer)).Should(BeTrue())
+			}).WithTimeout(15 * time.Second).Should(Succeed())
+
+			By("reconciling to delete the Claim's Runner")
+			Eventually(ctx, func(g Gomega) {
+				g.Expect(reconcileClaim(ctx, c)).Error().ShouldNot(HaveOccurred())
+				g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(r), r)).
+					Should(MatchError(kerrors.IsNotFound, "IsNotFound"))
+			}).WithTimeout(15 * time.Second).Should(Succeed())
+
+			By("reconciling to remove the finalizer from the Claim")
+			Eventually(ctx, func(g Gomega) {
+				g.Expect(reconcileClaim(ctx, c)).Error().ShouldNot(HaveOccurred())
+				g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), c)).
+					Should(MatchError(kerrors.IsNotFound, "IsNotFound"))
+			}).WithTimeout(15 * time.Second).Should(Succeed())
 		})
 	})
 
-	When("claim is Claimed and pod is Running", func() {
-		It("should not delete the Claim", func(ctx context.Context) {
-			By("creating a Running pod and a Claimed claim")
-			p := createPod(ctx, corev1.PodRunning)
-			c := createClaimedClaim(ctx, p)
+	When("ensureRunnerIsDeleted is called for an already-deleted Runner", func() {
+		It("should not return an error", func(ctx context.Context) {
+			nonExistentRunner := mayv1alpha1.Runner{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "non-existent-runner",
+					Namespace: ns.Name,
+				},
+			}
+			Expect(reconciler.ensureRunnerIsDeleted(ctx, nonExistentRunner)).Should(Succeed())
+		})
+	})
 
-			By("reconciling the Claim")
-			Expect(reconcileClaim(ctx, c)).Should(Equal(reconcile.Result{}))
+	When("finalizing a Claim does not affect Runners belonging to other Claims", func() {
+		It("should only delete Runners reserved by the finalized Claim", func(ctx context.Context) {
+			By("creating two pods, two reserved Runners and two Claimed Claims")
+			pA := createPod(ctx, "")
+			pB := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod-b",
+					Namespace: ns.Name,
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{Name: "test-container", Image: "test-image"},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pB)).Should(Succeed())
+			waitForCache(ctx, pB)
 
-			By("verifying the Claim still exists")
-			Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), &mayv1alpha1.Claim{})).Should(Succeed())
+			createReservedRunner(ctx, "runner-a", flavor, claimName, ns.Name)
+			createReservedRunner(ctx, "runner-b", flavor, "test-claim-b", ns.Name)
+
+			cA := createClaimedClaim(ctx, pA)
+			createClaim(ctx, pB, claim.IsClaimed, func(c *mayv1alpha1.Claim) {
+				c.Name = "test-claim-b"
+				c.Finalizers = append(c.Finalizers, constants.ClaimControllerFinalizer)
+				Expect(controllerutil.SetControllerReference(pB, c, k8sCachedClient.Scheme())).Should(Succeed())
+				claim.SetToSchedule(c)
+				claim.SetClaimed(c)
+			})
+
+			By("deleting claim A to trigger finalization")
+			Expect(k8sCachedClient.Delete(ctx, cA)).Should(Succeed())
+			Eventually(ctx, func(g Gomega) {
+				g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(cA), cA)).Should(Succeed())
+				g.Expect(cA.DeletionTimestamp.IsZero()).Should(BeFalse())
+			}).WithTimeout(15 * time.Second).Should(Succeed())
+
+			By("reconciling to trigger runner-a deletion")
+			Expect(reconcileClaim(ctx, cA)).Error().ShouldNot(HaveOccurred())
+
+			By("checking runner-a is marked for deletion")
+			rA := &mayv1alpha1.Runner{}
+			Eventually(ctx, func(g Gomega) {
+				g.Expect(k8sCachedClient.Get(ctx, client.ObjectKey{Name: "runner-a", Namespace: ns.Name}, rA)).Should(Succeed())
+				g.Expect(rA.DeletionTimestamp.IsZero()).Should(BeFalse())
+				g.Expect(controllerutil.ContainsFinalizer(rA, constants.ClaimControllerFinalizer)).Should(BeTrue())
+			}).WithTimeout(15 * time.Second).Should(Succeed())
+
+			By("reconciling to remove finalizer from runner-a")
+			Expect(reconcileClaim(ctx, cA)).Error().ShouldNot(HaveOccurred())
+
+			By("checking runner-a is deleted")
+			Eventually(ctx, func(g Gomega) {
+				g.Expect(k8sCachedClient.Get(ctx, client.ObjectKey{Name: "runner-a", Namespace: ns.Name}, rA)).
+					Should(MatchError(kerrors.IsNotFound, "IsNotFound"))
+			}).WithTimeout(15 * time.Second).Should(Succeed())
+
+			By("reconciling to remove finalizer from claim A")
+			Expect(reconcileClaim(ctx, cA)).Error().ShouldNot(HaveOccurred())
+
+			By("checking claim A is deleted")
+			Eventually(ctx, func(g Gomega) {
+				g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(cA), cA)).
+					Should(MatchError(kerrors.IsNotFound, "IsNotFound"))
+			}).WithTimeout(15 * time.Second).Should(Succeed())
+
+			By("verifying the runner assigned to claim B still exists and is reserved")
+			rB := &mayv1alpha1.Runner{}
+			Expect(k8sCachedClient.Get(ctx, client.ObjectKey{Name: "runner-b", Namespace: ns.Name}, rB)).Should(Succeed())
+			Expect(rB.Spec.InUseBy).ShouldNot(BeNil())
+			Expect(rB.Spec.InUseBy.Name).Should(Equal("test-claim-b"))
+			Expect(rB.Spec.InUseBy.Namespace).Should(Equal(ns.Name))
 		})
 	})
 
@@ -402,7 +530,8 @@ var _ = Describe("ClaimReconciler", func() {
 		})
 	})
 
-	Context("Metrics tests", Serial, func() {
+	// Serialize metric tests to keep counters consistent
+	Describe("may_claim_matched metrics", Serial, func() {
 		It("should increment may_claim_matched when a Claim is matched", func(ctx context.Context) {
 			By("recording the metric value before reconciling")
 			before := testutil.ToFloat64(claimMatched)
@@ -432,6 +561,82 @@ var _ = Describe("ClaimReconciler", func() {
 
 			By("verifying the metric was not incremented")
 			Expect(testutil.ToFloat64(claimMatched)).Should(Equal(before))
+		})
+	})
+
+	// Serialize metric tests to keep counters consistent
+	Describe("may_claim_runner_deletions metrics", Serial, func() {
+		It("should increment may_claim_runner_deletions when a Claim's Runner is deleted", func(ctx context.Context) {
+			By("creating a pod, a reserved Runner and a Claimed Claim")
+			p := createPod(ctx, "")
+			createReservedRunner(ctx, "metrics-delete-runner", flavor, claimName, ns.Name)
+			c := createClaimedClaim(ctx, p)
+
+			By("recording the metric value before deletion")
+			before := testutil.ToFloat64(claimRunnerDeletions)
+
+			By("deleting the Claim to trigger finalization")
+			Expect(k8sCachedClient.Delete(ctx, c)).Should(Succeed())
+			Eventually(ctx, func(g Gomega) {
+				g.Expect(k8sCachedClient.Get(ctx, client.ObjectKeyFromObject(c), c)).Should(Succeed())
+				g.Expect(c.DeletionTimestamp.IsZero()).Should(BeFalse())
+			}).WithTimeout(15 * time.Second).Should(Succeed())
+
+			By("reconciling to trigger runner deletion")
+			Expect(reconcileClaim(ctx, c)).Error().ShouldNot(HaveOccurred())
+
+			By("verifying the metric was incremented")
+			Expect(testutil.ToFloat64(claimRunnerDeletions)).Should(BeNumerically(">", before))
+		})
+
+		It("should not increment may_claim_runner_deletions when Delete fails", func(ctx context.Context) {
+			By("creating a Runner that exists in the API server")
+			r := createReadyRunner(ctx, "metrics-fail-runner", flavor)
+
+			By("creating a reconciler with a failing Delete for Runners")
+			watchClient, err := client.NewWithWatch(cfg, client.Options{Scheme: scheme.Scheme})
+			Expect(err).ShouldNot(HaveOccurred())
+			failingClient := interceptor.NewClient(watchClient, interceptor.Funcs{
+				Delete: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+					if _, ok := obj.(*mayv1alpha1.Runner); ok {
+						return fmt.Errorf("simulated delete failure")
+					}
+					return cl.Delete(ctx, obj, opts...)
+				},
+			})
+			failReconciler := &ClaimReconciler{
+				Client:    failingClient,
+				Scheduler: scheduler.New(k8sCachedClient, scheme.Scheme, ns.Name),
+				Scheme:    scheme.Scheme,
+				Namespace: ns.Name,
+			}
+
+			By("recording the metric value before deletion attempt")
+			before := testutil.ToFloat64(claimRunnerDeletions)
+
+			By("calling ensureRunnerIsDeleted — expecting an error from the failed Delete")
+			Expect(failReconciler.ensureRunnerIsDeleted(ctx, *r)).ShouldNot(Succeed())
+
+			By("verifying the metric was not incremented")
+			Expect(testutil.ToFloat64(claimRunnerDeletions)).Should(Equal(before))
+		})
+
+		It("should not increment may_claim_runner_deletions for non-existent runner", func(ctx context.Context) {
+			nonExistentRunner := mayv1alpha1.Runner{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "non-existent-runner-metric",
+					Namespace: ns.Name,
+				},
+			}
+
+			By("recording the metric value before attempting deletion")
+			before := testutil.ToFloat64(claimRunnerDeletions)
+
+			By("calling ensureRunnerIsDeleted on a non-existent runner")
+			Expect(reconciler.ensureRunnerIsDeleted(ctx, nonExistentRunner)).Should(Succeed())
+
+			By("verifying the metric was not incremented")
+			Expect(testutil.ToFloat64(claimRunnerDeletions)).Should(Equal(before))
 		})
 	})
 

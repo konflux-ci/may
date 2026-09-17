@@ -29,7 +29,6 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -192,8 +191,8 @@ func overwriteRootKey(
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  fmt.Sprintf("ssh-%s-key", hr.Name),
-					Optional:    ptr.To(false),
-					DefaultMode: ptr.To(int32(0o400)),
+					Optional:    new(false),
+					DefaultMode: new(int32(0o400)),
 				},
 			},
 		}

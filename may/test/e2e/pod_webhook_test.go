@@ -81,6 +81,25 @@ func PodWebhookContexts() {
 			}).Should(Succeed())
 		})
 
+		DescribeTable("does not add scheduling gate to Pod with excluded flavor annotation",
+			func(flavor string) {
+				podName := "pod-excluded-" + flavor
+
+				By(fmt.Sprintf("creating a Pod with excluded flavor annotation (%s)", flavor))
+				createPodWithFlavor(podName, webhookTestNamespace, flavor)
+
+				By("verifying the Pod does not have the may scheduling gate")
+				p := getPod(NewWithT(GinkgoT()), webhookTestNamespace, podName)
+				Expect(p.Spec.SchedulingGates).ShouldNot(
+					ContainElement(HaveField("Name", constants.MayPodSchedulingGate)),
+					"Pod with excluded flavor %q should not have the may scheduling gate", flavor,
+				)
+			},
+			Entry("localhost flavor", "localhost"),
+			Entry("local flavor", "local"),
+			Entry("linux-x86-64 flavor", "linux-x86-64"),
+		)
+
 		It("leaves Pod without flavor annotation unchanged", func() {
 			podName := "pod-without-flavor"
 

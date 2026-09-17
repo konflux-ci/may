@@ -18,7 +18,7 @@ package ec2
 
 import (
 	"context"
-	"time"
+	"net"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -26,15 +26,11 @@ import (
 
 var _ = Describe("SSHPortOpen", func() {
 	DescribeTable("returns a wrapped error when the SSH port is unreachable",
-		func(host string) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-			defer cancel()
-
+		func(ctx context.Context, host string) {
 			err := SSHPortOpen(ctx, host)
-			Expect(err).Should(MatchError(And(
-				ContainSubstring("ssh probe to"),
-				ContainSubstring(":22"),
-			)))
+			Expect(err).Should(MatchError(
+				HavePrefix("ssh probe to " + net.JoinHostPort(host, sshPort) + ": "),
+			))
 		},
 		Entry("invalid IP address", "999.999.999.999"),
 		Entry("invalid hostname", "not-a-host"),

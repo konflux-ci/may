@@ -36,10 +36,10 @@ import (
 )
 
 type mockEC2Client struct {
-	launchInstance     func(context.Context, internalconfig.AWSConfiguration) (string, error)
-	describeInstance   func(context.Context, string) (internalec2.InstanceDetails, error)
-	sshReadyOnPublicIP func(context.Context, string) (string, bool, error)
-	terminateInstance  func(context.Context, string) error
+	launchInstance    func(context.Context, internalconfig.AWSConfiguration) (string, error)
+	describeInstance  func(context.Context, string, bool) (internalec2.InstanceDetails, error)
+	sshReady          func(context.Context, string, bool) (string, bool, error)
+	terminateInstance func(context.Context, string) error
 }
 
 func (m *mockEC2Client) LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfiguration) (string, error) {
@@ -49,16 +49,16 @@ func (m *mockEC2Client) LaunchInstance(ctx context.Context, cfg internalconfig.A
 	return "", nil
 }
 
-func (m *mockEC2Client) DescribeInstance(ctx context.Context, instanceID string) (internalec2.InstanceDetails, error) {
+func (m *mockEC2Client) DescribeInstance(ctx context.Context, instanceID string, strictPublicAddress bool) (internalec2.InstanceDetails, error) {
 	if m.describeInstance != nil {
-		return m.describeInstance(ctx, instanceID)
+		return m.describeInstance(ctx, instanceID, strictPublicAddress)
 	}
 	return internalec2.InstanceDetails{}, nil
 }
 
-func (m *mockEC2Client) SSHReadyOnPublicIP(ctx context.Context, instanceID string) (string, bool, error) {
-	if m.sshReadyOnPublicIP != nil {
-		return m.sshReadyOnPublicIP(ctx, instanceID)
+func (m *mockEC2Client) SSHReady(ctx context.Context, instanceID string, strictPublicAddress bool) (string, bool, error) {
+	if m.sshReady != nil {
+		return m.sshReady(ctx, instanceID, strictPublicAddress)
 	}
 	return "", false, nil
 }
@@ -157,7 +157,7 @@ var _ = Describe("HostStateHelper", func() {
 		})
 
 		mockEC2 := &mockEC2Client{
-			sshReadyOnPublicIP: func(context.Context, string) (string, bool, error) {
+			sshReady: func(context.Context, string, bool) (string, bool, error) {
 				return "203.0.113.10", false, nil
 			},
 		}
@@ -180,7 +180,7 @@ var _ = Describe("HostStateHelper", func() {
 		})
 
 		mockEC2 := &mockEC2Client{
-			sshReadyOnPublicIP: func(context.Context, string) (string, bool, error) {
+			sshReady: func(context.Context, string, bool) (string, bool, error) {
 				return "203.0.113.10", true, nil
 			},
 		}
@@ -208,7 +208,7 @@ var _ = Describe("HostStateHelper", func() {
 		})
 
 		mockEC2 := &mockEC2Client{
-			describeInstance: func(context.Context, string) (internalec2.InstanceDetails, error) {
+			describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
 				return internalec2.InstanceDetails{State: types.InstanceStateNameStopped}, nil
 			},
 		}
@@ -229,7 +229,7 @@ var _ = Describe("HostStateHelper", func() {
 
 		terminated := false
 		mockEC2 := &mockEC2Client{
-			describeInstance: func(context.Context, string) (internalec2.InstanceDetails, error) {
+			describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
 				return internalec2.InstanceDetails{State: types.InstanceStateNameRunning}, nil
 			},
 			terminateInstance: func(context.Context, string) error {
@@ -255,7 +255,7 @@ var _ = Describe("HostStateHelper", func() {
 		})
 
 		mockEC2 := &mockEC2Client{
-			describeInstance: func(context.Context, string) (internalec2.InstanceDetails, error) {
+			describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
 				return internalec2.InstanceDetails{State: types.InstanceStateNameTerminated}, nil
 			},
 		}

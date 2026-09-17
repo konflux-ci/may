@@ -22,6 +22,7 @@ package e2e
 import (
 	"fmt"
 	"os/exec"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -96,6 +97,24 @@ func ClaimerContexts() {
 				g.Expect(c.Labels).To(HaveKeyWithValue("tekton.dev/pipeline", pipelineLabel))
 			}).Should(Succeed())
 		})
+
+		DescribeTable("does not create a Claim for Pod with excluded flavor annotation",
+			func(flavor string) {
+				podName := "pod-claimer-excluded-" + flavor
+
+				By(fmt.Sprintf("creating a Pod with excluded flavor annotation (%s)", flavor))
+				createPodWithFlavor(podName, claimerTestNamespace, flavor)
+
+				By("verifying no Claim is created for excluded flavor")
+				Consistently(func(g Gomega) {
+					_, err := getClaimOrErr(g, claimerTestNamespace, podName)
+					g.Expect(err).To(BeKubectlNotFound(), "expected no Claim for Pod with excluded flavor %q", flavor)
+				}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+			},
+			Entry("localhost flavor", "localhost"),
+			Entry("local flavor", "local"),
+			Entry("linux-x86-64 flavor", "linux-x86-64"),
+		)
 
 		It("does not create a Claim for Pod without flavor annotation in tenant namespace", func() {
 			podName := "pod-claimer-without-flavor"

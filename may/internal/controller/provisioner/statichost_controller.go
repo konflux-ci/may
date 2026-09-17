@@ -113,8 +113,7 @@ func (r *StaticHostReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, r.ensureHostIsDraining(ctx, h, rr)
 
 	case maykonfluxcidevv1alpha1.HostActualStateDrained:
-		// TODO(@konflux-ci): ensure all runners were deleted
-		panic("not implemented")
+		return ctrl.Result{}, nil
 
 	default:
 		l.Info("invalid status: skipping reconciliation", "status", *h.Status.State)
@@ -139,20 +138,31 @@ func (r *StaticHostReconciler) ensureHostIsDraining(
 	l := logf.FromContext(ctx).WithValues("host", client.ObjectKeyFromObject(&host))
 	errs := []error{}
 
+	// if we have no runners, move to the drained state
+	if len(runners.Items) == 0 {
+		host.Status.State = new(maykonfluxcidevv1alpha1.HostActualStateDrained)
+		return r.Status().Update(ctx, &host)
+	}
+
+	// otherwise, delete all runners that aren't in use and aren't already
+	// marked for deletion
 	for _, ru := range runners.Items {
-		if ru.Spec.InUseBy != nil {
+		if ru.Spec.InUseBy != nil || !ru.DeletionTimestamp.IsZero() {
 			continue
 		}
 
 		err := r.Delete(ctx, &ru)
 		if kerrors.IsNotFound(err) {
+			// the runner got deleted between when we listed runners and when
+			// we started processing them, so consider it deleted for the
+			// purposes of moving into the `Drained` state
 			continue
-		}
-		if err != nil {
+		} else if err != nil {
 			l.Error(err, "failed to delete runner", "runner", client.ObjectKeyFromObject(&ru))
 			errs = append(errs, err)
 			continue
 		}
+
 		runnersDeleted.Inc()
 	}
 

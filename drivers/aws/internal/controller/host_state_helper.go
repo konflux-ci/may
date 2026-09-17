@@ -31,8 +31,8 @@ import (
 
 type hostEC2Client interface {
 	LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfiguration) (string, error)
-	DescribeInstance(ctx context.Context, instanceID string) (internalec2.InstanceDetails, error)
-	SSHReadyOnPublicIP(ctx context.Context, instanceID string) (publicIP string, ready bool, err error)
+	DescribeInstance(ctx context.Context, instanceID string, strictPublicAddress bool) (internalec2.InstanceDetails, error)
+	SSHReady(ctx context.Context, instanceID string, strictPublicAddress bool) (address string, ready bool, err error)
 	TerminateInstance(ctx context.Context, instanceID string) error
 }
 
@@ -83,13 +83,13 @@ func (h *HostStateHelper) EnsureInstanceReady(
 ) (ctrl.Result, error) {
 	l := logf.FromContext(ctx)
 
+	cfg, err := awsConfig(ctx)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceID]
 	if instanceID == "" {
-		cfg, err := awsConfig(ctx)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-
 		instanceID, err = ec2.LaunchInstance(ctx, cfg)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -102,21 +102,21 @@ func (h *HostStateHelper) EnsureInstanceReady(
 		return ctrl.Result{RequeueAfter: instancePollInterval}, nil
 	}
 
-	publicIP, ready, err := ec2.SSHReadyOnPublicIP(ctx, instanceID)
+	address, ready, err := ec2.SSHReady(ctx, instanceID, cfg.StrictPublicAddress)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 	if !ready {
-		if publicIP == "" {
-			l.Info("waiting for EC2 instance public IP", "instanceID", instanceID)
+		if address == "" {
+			l.Info("waiting for EC2 instance SSH address", "instanceID", instanceID)
 		} else {
-			l.Info("waiting for SSH on public IP", "instanceID", instanceID, "publicIP", publicIP)
+			l.Info("waiting for SSH on address", "instanceID", instanceID, "address", address)
 		}
 		return ctrl.Result{RequeueAfter: instancePollInterval}, nil
 	}
 
-	l.Info("EC2 instance accepts SSH on public IP", "instanceID", instanceID, "publicIP", publicIP)
-	if err := h.SetInstanceMetadata(ctx, host, instanceID, publicIP); err != nil {
+	l.Info("EC2 instance accepts SSH", "instanceID", instanceID, "address", address)
+	if err := h.SetInstanceMetadata(ctx, host, instanceID, address); err != nil {
 		return ctrl.Result{}, err
 	}
 	readyState := maykonfluxcidevv1alpha1.HostActualStateReady
@@ -130,7 +130,7 @@ func (h *HostStateHelper) EnsureInstanceStillRunning(ctx context.Context, ec2 ho
 		return ctrl.Result{}, fmt.Errorf("host is Ready but annotation %q is missing", internalconfig.AnnotationInstanceID)
 	}
 
-	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID)
+	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID, false)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -151,7 +151,7 @@ func (h *HostStateHelper) EnsureInstanceTerminated(ctx context.Context, ec2 host
 		return ctrl.Result{}, true, nil
 	}
 
-	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID)
+	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID, false)
 	if err != nil {
 		return ctrl.Result{}, false, err
 	}
@@ -171,7 +171,7 @@ func (h *HostStateHelper) EnsureInstanceTerminated(ctx context.Context, ec2 host
 	}
 }
 
-func (h *HostStateHelper) SetInstanceMetadata(ctx context.Context, host client.Object, instanceID, publicIP string) error {
+func (h *HostStateHelper) SetInstanceMetadata(ctx context.Context, host client.Object, instanceID, address string) error {
 	base := host.DeepCopyObject().(client.Object)
 	patch := client.MergeFrom(base)
 	annotations := host.GetAnnotations()
@@ -179,7 +179,7 @@ func (h *HostStateHelper) SetInstanceMetadata(ctx context.Context, host client.O
 		annotations = map[string]string{}
 	}
 	annotations[internalconfig.AnnotationInstanceID] = instanceID
-	annotations[internalconfig.AnnotationPublicIPAddress] = publicIP
+	annotations[internalconfig.AnnotationPublicIPAddress] = address
 	host.SetAnnotations(annotations)
 	return h.Patch(ctx, host, patch)
 }

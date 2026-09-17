@@ -47,6 +47,47 @@ flowchart TD
     end
 ```
 
+## Runner Lifecycle
+
+A Runner is created by a driver and its lifecycle is driven by MAY's **Provisioner** through the `Ready` status condition.
+The Provisioner only acts on Runners that carry the runner-type label; otherwise it waits for the driver to set the status.
+
+Once claimed, the Provisioner sets `Initializing`, runs the Runner's provisioning hooks in order (each hook's pod must succeed before the next starts), and then sets `Ready`.
+A Runner with no provisioning hooks goes straight to `Ready`.
+When a `Ready` Runner defines `spec.queue`, the Provisioner creates a cluster-scoped Kueue **ClusterQueue** named after the Runner.
+
+On deletion the Provisioner sets `Cleaning` and runs the cleanup hooks. If they succeed, the Runner is removed; if any cleanup hook fails, the Runner is kept with `CleaningFailed` (its finalizer remains) so the failure is not lost.
+
+```mermaid
+stateDiagram-v2
+    [*] --> NoCondition: driver creates Runner
+    NoCondition --> Initializing: Provisioner claims Runner (runner-type label)
+    Initializing --> Ready: provisioning hooks succeed
+    Initializing --> InitializationFailed: a provisioning hook fails
+    Ready --> Cleaning: Runner deleted
+    Cleaning --> [*]: cleanup hooks succeed (Runner removed)
+    Cleaning --> CleaningFailed: a cleanup hook fails
+```
+
+| State | `Ready` condition | Meaning |
+|-------|-------------------|---------|
+| **(no condition)** | unset | Runner created; MAY waits for the driver / runner-type label. |
+| **Initializing** | `False` / `Initializing` | Provisioning hooks are running. |
+| **Ready** | `True` / `Ready` | Runner is provisioned and available for workloads. |
+| **InitializationFailed** | `False` / `InitializationFailed` | A provisioning hook pod failed. |
+| **Cleaning** | `False` / `Cleaning` | Runner is being deleted; cleanup hooks are running. |
+| **CleaningFailed** | `False` / `CleaningFailed` | A cleanup hook failed; Runner is retained for investigation. |
+
+### Metrics
+
+The Provisioner exposes Prometheus counters on the controller's metrics endpoint, incremented as Runners move through the lifecycle:
+
+| Metric | Labels | Description |
+|--------|--------|-------------|
+| `may_runner_initialized` | `type`, `result` | Total number of runners initialized. `type` is the runner-type label value (e.g. `static`, or `unknown` if unset); `result` is `success` when the Runner reaches `Ready` or `failure` when a provisioning hook fails. |
+| `may_runner_cleaning_failed` | — | Total number of runners whose cleanup hooks failed. |
+| `may_runner_deleted` | — | Total number of runners that completed cleanup and were deleted. |
+
 ## Component Overview
 
 ### MAY (may/)

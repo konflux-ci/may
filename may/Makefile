@@ -106,6 +106,10 @@ test-e2e-smoke-coverage: vet-e2e setup-test-e2e manifests generate fmt vet ## Ru
 	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) ENABLE_COVERAGE=$(ENABLE_COVERAGE) go test -tags=e2e ./test/e2e/ -v -ginkgo.v -ginkgo.label-filter "smoke" -timeout "$(E2E_TEST_TIMEOUT)"
 	@if [ "$(ENABLE_COVERAGE)" != "true" ]; then $(MAKE) cleanup-test-e2e; fi
 
+.PHONY: report-coverage
+report-coverage:
+	go tool cover -html cover.out -o cover.html
+
 .PHONY: load-image
 load-image:
 	IMAGE_ARCHIVE=$(shell mktemp -tu controller-XXXXXX.tar) && \

@@ -2,7 +2,10 @@
 
 MAY AWS Driver manages AWS Instances for MAY.
 
-The driver performs all kind of operations with EC2 instances in Amazon cloud. It should support two modes of operations - static (long-running instances) and dynamic (one-time instances). This includes, but not limited to - on demand EC2 instances creation, accessibility verification, and disposal.
+The driver performs all kind of operations with EC2 instances in Amazon cloud via
+`internal/ec2/` (launch, describe, SSH readiness probing, and terminate). It
+should support two modes of operations - static (long-running instances) and
+dynamic (one-time instances).
 
 ## Commands
 
@@ -20,6 +23,7 @@ The driver performs all kind of operations with EC2 instances in Amazon cloud. I
 - `internal/controller/` — controllers
 - `internal/config/` — internal configuration structs and parsers
 - `internal/client/` — EC2 client constructors (OpenShift SA web-identity auth)
+- `internal/ec2/` — EC2 instance lifecycle operations (launch, describe, SSH probe, terminate); wraps authenticated SDK clients from `internal/client/`
 
 ## Key Conventions
 
@@ -30,6 +34,10 @@ The driver performs all kind of operations with EC2 instances in Amazon cloud. I
 ## Gotchas
 
 - `Host` type is defined in `../../may`.
+- Host CR annotations (`instance-profile`, `security-group`, `security-group-id`,
+  etc.) are authorization boundaries: only principals with Host CR write access
+  can set them. Scope the controller IAM role's `iam:PassRole` to permitted
+  instance profiles and EC2/VPC permissions to permitted security groups.
 
 ## AWS authentication (standalone OpenShift)
 
@@ -84,7 +92,16 @@ ServiceAccount name and namespace in the IAM role trust policy.
 1. Register the OpenShift service-account OIDC issuer as an IAM OIDC provider.
 2. Create an IAM role with `AssumeRoleWithWebIdentity` trust, conditioned on the
    rendered subject from the previous section.
-3. Attach a least-privilege policy for the EC2 actions the driver needs.
+3. Attach a least-privilege policy for the EC2 actions the driver needs:
+
+   | IAM action | Used for |
+   |------------|----------|
+   | `ec2:RunInstances` | Launch instances |
+   | `ec2:DescribeInstances` | Poll instance state and public IP |
+   | `ec2:TerminateInstances` | Dispose instances |
+
+   When hosts use instance-profile annotations, the controller role also needs
+   scoped `iam:PassRole` for the profiles operators allow.
 
 ### OpenShift setup
 

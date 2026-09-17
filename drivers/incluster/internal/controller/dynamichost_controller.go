@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -82,7 +81,7 @@ func (r *DynamicHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// initialize state
 	if h.Status.State == nil {
 		l.Info("initializing host's state: Pending")
-		h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
+		h.Status.State = new(maykonfluxcidevv1alpha1.HostActualStatePending)
 		return ctrl.Result{}, r.Status().Update(ctx, &h)
 	}
 
@@ -119,7 +118,7 @@ func (r *DynamicHostReconciler) ensureReady(ctx context.Context, h *maykonfluxci
 			return ctrl.Result{}, err
 		}
 		l.Info("resources exists, updating status to Ready")
-		h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStateReady)
+		h.Status.State = new(maykonfluxcidevv1alpha1.HostActualStateReady)
 		return ctrl.Result{}, r.Status().Update(ctx, h)
 	case maykonfluxcidevv1alpha1.HostActualStateReady:
 		l.Info("ensuring resources exists")

@@ -266,6 +266,8 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(metricsOutput).NotTo(BeEmpty())
 				g.Expect(metricsOutput).To(ContainSubstring("< HTTP/1.1 200 OK"))
 				g.Expect(metricsOutput).To(ContainSubstring("may_claim_matched"))
+				g.Expect(metricsOutput).To(ContainSubstring("may_runner_deleted"))
+				g.Expect(metricsOutput).To(ContainSubstring("may_runner_cleaning_failed"))
 			}
 			Eventually(verifyMetricsAvailable, 2*time.Minute).Should(Succeed())
 		})
