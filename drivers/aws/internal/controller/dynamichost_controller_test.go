@@ -82,6 +82,6 @@ var _ = Describe("DynamicHost Controller", func() {
 		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
 		Expect(updated.Status.State).ShouldNot(BeNil())
 		Expect(*updated.Status.State).Should(Equal(maykonfluxcidevv1alpha1.HostActualStateReady))
-		Expect(updated.Annotations[internalconfig.AnnotationPublicIPAddress]).Should(Equal("203.0.113.11"))
+		Expect(updated.Annotations[internalconfig.AnnotationSSHAddress]).Should(Equal("203.0.113.11"))
 	})
 })

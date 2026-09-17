@@ -31,8 +31,9 @@ const (
 
 	// AnnotationInstanceID stores the EC2 instance ID created by the AWS driver.
 	AnnotationInstanceID = annotationPrefix + "instance-id"
-	// AnnotationPublicIPAddress stores the EC2 instance public IP observed by the AWS driver.
-	AnnotationPublicIPAddress = annotationPrefix + "public-ip"
+	// AnnotationSSHAddress stores the SSH address observed by the AWS driver
+	// (public DNS, public IP, or private IP).
+	AnnotationSSHAddress = annotationPrefix + "ssh-address"
 
 	// Configuration annotations.
 	AnnotationRegion                  = annotationPrefix + "region"

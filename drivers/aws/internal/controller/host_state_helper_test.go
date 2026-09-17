@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
@@ -71,12 +72,14 @@ func (m *mockEC2Client) TerminateInstance(ctx context.Context, instanceID string
 }
 
 func newTestScheme() *runtime.Scheme {
+	GinkgoHelper()
 	scheme := runtime.NewScheme()
 	utilruntime.Must(maykonfluxcidevv1alpha1.AddToScheme(scheme))
 	return scheme
 }
 
 func newTestStaticHost(name string, mutate func(*maykonfluxcidevv1alpha1.StaticHost)) *maykonfluxcidevv1alpha1.StaticHost {
+	GinkgoHelper()
 	host := &maykonfluxcidevv1alpha1.StaticHost{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -105,6 +108,7 @@ func newTestStaticHost(name string, mutate func(*maykonfluxcidevv1alpha1.StaticH
 }
 
 func newHostStateHelper(cl client.Client) HostStateHelper {
+	GinkgoHelper()
 	return HostStateHelper{Client: cl}
 }
 
@@ -197,10 +201,131 @@ var _ = Describe("HostStateHelper", func() {
 		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
 		Expect(updated.Status.State).ShouldNot(BeNil())
 		Expect(*updated.Status.State).Should(Equal(maykonfluxcidevv1alpha1.HostActualStateReady))
-		Expect(updated.Annotations[internalconfig.AnnotationPublicIPAddress]).Should(Equal("203.0.113.10"))
+		Expect(updated.Annotations[internalconfig.AnnotationSSHAddress]).Should(Equal("203.0.113.10"))
 	})
 
-	It("requeues when a Ready host's instance stops running", func(ctx context.Context) {
+	It("requeues while the SSH probe fails", func(ctx context.Context) {
+		host := newTestStaticHost("wait-ssh-probe", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID: "i-probe001",
+			}
+		})
+
+		mockEC2 := &mockEC2Client{
+			sshReady: func(context.Context, string, bool) (string, bool, error) {
+				return "", false, &internalec2.SSHProbeError{
+					Addr: "203.0.113.10:22",
+					Err:  errors.New("connection refused"),
+				}
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		result, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+			return internalconfig.AWSConfiguration{}, nil
+		}, &host.Status.State)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(result.RequeueAfter).Should(Equal(instancePollInterval))
+	})
+
+	It("returns a terminal SSHReady error", func(ctx context.Context) {
+		host := newTestStaticHost("ssh-terminated", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID: "i-term-ready",
+			}
+		})
+
+		expectedErr := errors.New("EC2 instance i-term-ready is terminated")
+		mockEC2 := &mockEC2Client{
+			sshReady: func(context.Context, string, bool) (string, bool, error) {
+				return "", false, expectedErr
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		_, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+			return internalconfig.AWSConfiguration{}, nil
+		}, &host.Status.State)
+		Expect(err).Should(MatchError(expectedErr))
+	})
+
+	It("returns an AWS configuration error", func(ctx context.Context) {
+		host := newTestStaticHost("bad-config", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID: "i-config001",
+			}
+		})
+
+		expectedErr := errors.New("invalid AWS annotation")
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		_, err := reconciler.EnsureInstanceReady(ctx, &mockEC2Client{}, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+			return internalconfig.AWSConfiguration{}, expectedErr
+		}, &host.Status.State)
+		Expect(err).Should(MatchError(expectedErr))
+	})
+
+	It("returns a launch error", func(ctx context.Context) {
+		host := newTestStaticHost("launch-err", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationRegion:       "us-east-1",
+				internalconfig.AnnotationAmi:          "ami-0123456789abcdef0",
+				internalconfig.AnnotationInstanceType: "m6a.large",
+			}
+		})
+
+		expectedErr := errors.New("RunInstances: quota exceeded")
+		mockEC2 := &mockEC2Client{
+			launchInstance: func(context.Context, internalconfig.AWSConfiguration) (string, error) {
+				return "", expectedErr
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		_, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+			return internalconfig.AWSConfiguration{
+				Region:       "us-east-1",
+				Ami:          "ami-0123456789abcdef0",
+				InstanceType: "m6a.large",
+			}, nil
+		}, &host.Status.State)
+		Expect(err).Should(MatchError(expectedErr))
+	})
+
+	It("forwards strict public address to SSHReady", func(ctx context.Context) {
+		host := newTestStaticHost("strict-ssh", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID: "i-strict001",
+			}
+		})
+
+		var gotStrict bool
+		mockEC2 := &mockEC2Client{
+			sshReady: func(_ context.Context, _ string, strictPublicAddress bool) (string, bool, error) {
+				gotStrict = strictPublicAddress
+				return "203.0.113.10", true, nil
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		_, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+			return internalconfig.AWSConfiguration{StrictPublicAddress: true}, nil
+		}, &host.Status.State)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(gotStrict).Should(BeTrue())
+	})
+
+	It("errors when a Ready host's instance is stopped", func(ctx context.Context) {
 		host := newTestStaticHost("not-running", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
 				internalconfig.AnnotationInstanceID: "i-stop001",
@@ -208,28 +333,79 @@ var _ = Describe("HostStateHelper", func() {
 		})
 
 		mockEC2 := &mockEC2Client{
-			describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
+			describeInstance: func(_ context.Context, _ string, strictPublicAddress bool) (internalec2.InstanceDetails, error) {
+				Expect(strictPublicAddress).Should(BeTrue())
 				return internalec2.InstanceDetails{State: types.InstanceStateNameStopped}, nil
 			},
 		}
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		result, err := reconciler.EnsureInstanceStillRunning(ctx, mockEC2, host)
+		result, err := reconciler.EnsureInstanceStillRunning(ctx, mockEC2, host, true)
+		Expect(err).Should(MatchError(And(
+			ContainSubstring("stopped"),
+			ContainSubstring("not running"),
+		)))
+		Expect(result.RequeueAfter).Should(BeZero())
+	})
+
+	It("leaves a running Ready host unchanged", func(ctx context.Context) {
+		host := newTestStaticHost("still-running", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID: "i-run001",
+			}
+		})
+
+		mockEC2 := &mockEC2Client{
+			describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
+				return internalec2.InstanceDetails{State: types.InstanceStateNameRunning}, nil
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		result, err := reconciler.EnsureInstanceStillRunning(ctx, mockEC2, host, false)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(result.RequeueAfter).Should(Equal(instancePollInterval))
+		Expect(result.RequeueAfter).Should(BeZero())
+	})
+
+	It("returns context cancellation from SSHReady", func(ctx context.Context) {
+		host := newTestStaticHost("ssh-canceled", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID: "i-cancel001",
+			}
+		})
+
+		canceled, cancel := context.WithCancel(ctx)
+		cancel()
+
+		mockEC2 := &mockEC2Client{
+			sshReady: func(context.Context, string, bool) (string, bool, error) {
+				return "", false, &internalec2.SSHProbeError{Addr: "203.0.113.10:22", Err: context.Canceled}
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		_, err := reconciler.EnsureInstanceReady(canceled, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+			return internalconfig.AWSConfiguration{}, nil
+		}, &host.Status.State)
+		Expect(err).Should(MatchError(context.Canceled))
 	})
 
 	It("terminates the instance during deletion", func(ctx context.Context) {
 		host := newTestStaticHost("finalize-terminate", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-term001",
+				internalconfig.AnnotationInstanceID:          "i-term001",
+				internalconfig.AnnotationStrictPublicAddress: "true",
 			}
 		})
 
 		terminated := false
 		mockEC2 := &mockEC2Client{
-			describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
+			describeInstance: func(_ context.Context, _ string, strictPublicAddress bool) (internalec2.InstanceDetails, error) {
+				Expect(strictPublicAddress).Should(BeTrue())
 				return internalec2.InstanceDetails{State: types.InstanceStateNameRunning}, nil
 			},
 			terminateInstance: func(context.Context, string) error {

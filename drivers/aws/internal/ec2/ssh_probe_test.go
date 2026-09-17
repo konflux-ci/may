@@ -28,6 +28,7 @@ var _ = Describe("SSHPortOpen", func() {
 	DescribeTable("returns a wrapped error when the SSH port is unreachable",
 		func(ctx context.Context, host string) {
 			err := SSHPortOpen(ctx, host)
+			Expect(IsSSHProbeError(err)).Should(BeTrue())
 			Expect(err).Should(MatchError(
 				HavePrefix("ssh probe to " + net.JoinHostPort(host, sshPort) + ": "),
 			))

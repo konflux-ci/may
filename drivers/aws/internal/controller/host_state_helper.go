@@ -19,20 +19,22 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
-	internalconfig "github.com/konflux-ci/may/drivers/aws/internal/config"
-	internalec2 "github.com/konflux-ci/may/drivers/aws/internal/ec2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
+	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
+	internalconfig "github.com/konflux-ci/may/drivers/aws/internal/config"
+	internalec2 "github.com/konflux-ci/may/drivers/aws/internal/ec2"
 )
 
 type hostEC2Client interface {
 	LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfiguration) (string, error)
 	DescribeInstance(ctx context.Context, instanceID string, strictPublicAddress bool) (internalec2.InstanceDetails, error)
-	SSHReady(ctx context.Context, instanceID string, strictPublicAddress bool) (address string, ready bool, err error)
+	SSHReady(ctx context.Context, instanceID string, strictPublicAddress bool) (string, bool, error)
 	TerminateInstance(ctx context.Context, instanceID string) error
 }
 
@@ -67,7 +69,11 @@ func (h *HostStateHelper) EnsureReady(
 	case maykonfluxcidevv1alpha1.HostActualStatePending:
 		return h.EnsureInstanceReady(ctx, ec2, host, awsConfig, statusState)
 	case maykonfluxcidevv1alpha1.HostActualStateReady:
-		return h.EnsureInstanceStillRunning(ctx, ec2, host)
+		cfg, err := awsConfig(ctx)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		return h.EnsureInstanceStillRunning(ctx, ec2, host, cfg.StrictPublicAddress)
 	default:
 		l.Info("actual state not implemented")
 		return ctrl.Result{}, nil
@@ -104,6 +110,13 @@ func (h *HostStateHelper) EnsureInstanceReady(
 
 	address, ready, err := ec2.SSHReady(ctx, instanceID, cfg.StrictPublicAddress)
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctrl.Result{}, err
+		}
+		if internalec2.IsSSHProbeError(err) {
+			l.Info("waiting for SSH on address", "instanceID", instanceID, "error", err)
+			return ctrl.Result{RequeueAfter: instancePollInterval}, nil
+		}
 		return ctrl.Result{}, err
 	}
 	if !ready {
@@ -124,23 +137,25 @@ func (h *HostStateHelper) EnsureInstanceReady(
 	return ctrl.Result{}, h.Status().Update(ctx, host)
 }
 
-func (h *HostStateHelper) EnsureInstanceStillRunning(ctx context.Context, ec2 hostEC2Client, host client.Object) (ctrl.Result, error) {
+func (h *HostStateHelper) EnsureInstanceStillRunning(ctx context.Context, ec2 hostEC2Client, host client.Object, strictPublicAddress bool) (ctrl.Result, error) {
 	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceID]
 	if instanceID == "" {
 		return ctrl.Result{}, fmt.Errorf("host is Ready but annotation %q is missing", internalconfig.AnnotationInstanceID)
 	}
 
-	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID, false)
+	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID, strictPublicAddress)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	if instanceDetails.State == types.InstanceStateNameRunning {
+	switch instanceDetails.State {
+	case types.InstanceStateNameRunning:
 		return ctrl.Result{}, nil
+	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated:
+		return ctrl.Result{}, fmt.Errorf("EC2 instance %s is %s", instanceID, instanceDetails.State)
+	default:
+		return ctrl.Result{}, fmt.Errorf("EC2 instance %s is %s and is not running", instanceID, instanceDetails.State)
 	}
-
-	logf.FromContext(ctx).Info("EC2 instance is not running", "instanceID", instanceID, "state", instanceDetails.State)
-	return ctrl.Result{RequeueAfter: instancePollInterval}, nil
 }
 
 // EnsureInstanceTerminated drives EC2 termination during host deletion.
@@ -151,7 +166,7 @@ func (h *HostStateHelper) EnsureInstanceTerminated(ctx context.Context, ec2 host
 		return ctrl.Result{}, true, nil
 	}
 
-	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID, false)
+	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID, strictPublicAddressFromHost(host))
 	if err != nil {
 		return ctrl.Result{}, false, err
 	}
@@ -179,7 +194,7 @@ func (h *HostStateHelper) SetInstanceMetadata(ctx context.Context, host client.O
 		annotations = map[string]string{}
 	}
 	annotations[internalconfig.AnnotationInstanceID] = instanceID
-	annotations[internalconfig.AnnotationPublicIPAddress] = address
+	annotations[internalconfig.AnnotationSSHAddress] = address
 	host.SetAnnotations(annotations)
 	return h.Patch(ctx, host, patch)
 }
@@ -194,4 +209,16 @@ func (h *HostStateHelper) SetInstanceID(ctx context.Context, host client.Object,
 	annotations[internalconfig.AnnotationInstanceID] = instanceID
 	host.SetAnnotations(annotations)
 	return h.Patch(ctx, host, patch)
+}
+
+func strictPublicAddressFromHost(host client.Object) bool {
+	v := host.GetAnnotations()[internalconfig.AnnotationStrictPublicAddress]
+	if v == "" {
+		return false
+	}
+	parsed, err := strconv.ParseBool(v)
+	if err != nil {
+		return false
+	}
+	return parsed
 }
