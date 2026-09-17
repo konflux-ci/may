@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
@@ -64,8 +63,6 @@ func (h *HostStateHelper) EnsureReady(
 	awsConfig func(context.Context) (internalconfig.AWSConfiguration, error),
 	statusState **maykonfluxcidevv1alpha1.HostActualState,
 ) (ctrl.Result, error) {
-	l := logf.FromContext(ctx).WithValues("actualState", actualState)
-
 	switch actualState {
 	case maykonfluxcidevv1alpha1.HostActualStatePending:
 		return h.EnsureInstanceReady(ctx, ec2, host, awsConfig, statusState)
@@ -76,8 +73,7 @@ func (h *HostStateHelper) EnsureReady(
 		}
 		return h.EnsureInstanceStillRunning(ctx, ec2, host, cfg.StrictPublicAddress)
 	default:
-		l.Info("actual state not implemented")
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, fmt.Errorf("unsupported host actual state %q", actualState)
 	}
 }
 
@@ -140,6 +136,7 @@ func (h *HostStateHelper) EnsureInstanceReady(
 }
 
 // EnsureInstanceStillRunning reports an error if a Ready host's instance is not running.
+// A running instance is requeued after instanceHealthInterval so out-of-band EC2 changes are noticed.
 func (h *HostStateHelper) EnsureInstanceStillRunning(ctx context.Context, ec2 hostEC2Client, host client.Object, strictPublicAddress bool) (ctrl.Result, error) {
 	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceID]
 	if instanceID == "" {
@@ -153,7 +150,7 @@ func (h *HostStateHelper) EnsureInstanceStillRunning(ctx context.Context, ec2 ho
 
 	switch instanceDetails.State {
 	case types.InstanceStateNameRunning:
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: instanceHealthInterval}, nil
 	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated:
 		return ctrl.Result{}, fmt.Errorf("EC2 instance %s is %s", instanceID, instanceDetails.State)
 	default:
@@ -168,8 +165,15 @@ func (h *HostStateHelper) EnsureInstanceTerminated(ctx context.Context, ec2 host
 	if instanceID == "" {
 		return ctrl.Result{}, true, nil
 	}
+	if ec2 == nil {
+		return ctrl.Result{}, false, fmt.Errorf("EC2 client is required to terminate instance %s", instanceID)
+	}
 
-	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID, strictPublicAddressFromHost(host))
+	strictPublicAddress, err := strictPublicAddressFromHost(host)
+	if err != nil {
+		return ctrl.Result{}, false, err
+	}
+	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID, strictPublicAddress)
 	if err != nil {
 		return ctrl.Result{}, false, err
 	}
@@ -216,14 +220,10 @@ func (h *HostStateHelper) SetInstanceID(ctx context.Context, host client.Object,
 	return h.Patch(ctx, host, patch)
 }
 
-func strictPublicAddressFromHost(host client.Object) bool {
-	v := host.GetAnnotations()[internalconfig.AnnotationStrictPublicAddress]
-	if v == "" {
-		return false
+func strictPublicAddressFromHost(host client.Object) (bool, error) {
+	v, ok := host.GetAnnotations()[internalconfig.AnnotationStrictPublicAddress]
+	if !ok {
+		return false, nil
 	}
-	parsed, err := strconv.ParseBool(v)
-	if err != nil {
-		return false
-	}
-	return parsed
+	return internalconfig.ParseBool(internalconfig.AnnotationStrictPublicAddress, v)
 }

@@ -353,7 +353,7 @@ var _ = Describe("HostStateHelper", func() {
 		Expect(result.RequeueAfter).Should(BeZero())
 	})
 
-	It("leaves a running Ready host unchanged", func(ctx context.Context) {
+	It("requeues a running Ready host to catch later EC2 state changes", func(ctx context.Context) {
 		host := newTestStaticHost("still-running", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
 				internalconfig.AnnotationInstanceID: "i-run001",
@@ -370,7 +370,7 @@ var _ = Describe("HostStateHelper", func() {
 
 		result, err := reconciler.EnsureInstanceStillRunning(ctx, mockEC2, host, false)
 		Expect(err).ShouldNot(HaveOccurred())
-		Expect(result.RequeueAfter).Should(BeZero())
+		Expect(result.RequeueAfter).Should(Equal(instanceHealthInterval))
 	})
 
 	It("returns context cancellation from SSHReady", func(ctx context.Context) {
@@ -448,14 +448,63 @@ var _ = Describe("HostStateHelper", func() {
 		Expect(result.RequeueAfter).Should(BeZero())
 	})
 
+	It("errors when the strict-public-address annotation is malformed", func(ctx context.Context) {
+		host := newTestStaticHost("finalize-bad-strict", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID:          "i-term002",
+				internalconfig.AnnotationStrictPublicAddress: "maybe",
+			}
+		})
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		result, done, err := reconciler.EnsureInstanceTerminated(ctx, &mockEC2Client{}, host)
+		Expect(err).Should(MatchError(ContainSubstring(internalconfig.AnnotationStrictPublicAddress)))
+		Expect(done).Should(BeFalse())
+		Expect(result.RequeueAfter).Should(BeZero())
+	})
+
 	It("reports termination complete when no instance was created", func(ctx context.Context) {
 		host := newTestStaticHost("finalize-no-instance", nil)
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		result, done, err := reconciler.EnsureInstanceTerminated(ctx, &mockEC2Client{}, host)
+		result, done, err := reconciler.EnsureInstanceTerminated(ctx, nil, host)
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(done).Should(BeTrue())
 		Expect(result.RequeueAfter).Should(BeZero())
+	})
+
+	It("errors when terminating an instance without an EC2 client", func(ctx context.Context) {
+		host := newTestStaticHost("finalize-nil-ec2", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID: "i-term003",
+			}
+		})
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		result, done, err := reconciler.EnsureInstanceTerminated(ctx, nil, host)
+		Expect(err).Should(MatchError(ContainSubstring("EC2 client is required")))
+		Expect(done).Should(BeFalse())
+		Expect(result.RequeueAfter).Should(BeZero())
+	})
+
+	It("errors when the actual state is not implemented", func(ctx context.Context) {
+		host := newTestStaticHost("unknown-state", nil)
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		_, err := reconciler.EnsureReady(
+			ctx,
+			&mockEC2Client{},
+			host,
+			maykonfluxcidevv1alpha1.HostActualState("Unknown"),
+			func(context.Context) (internalconfig.AWSConfiguration, error) {
+				return internalconfig.AWSConfiguration{}, nil
+			},
+			&host.Status.State,
+		)
+		Expect(err).Should(MatchError(ContainSubstring(`unsupported host actual state "Unknown"`)))
 	})
 })

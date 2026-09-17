@@ -24,10 +24,11 @@ import (
 )
 
 const (
-	AWSDriverFinalizer   = "drivers.may.konflux-ci.dev/aws"
-	DriverLabel          = "may.konflux-ci.dev/driver"
-	DriverLabelValueAWS  = "aws"
-	instancePollInterval = 15 * time.Second
+	AWSDriverFinalizer     = "drivers.may.konflux-ci.dev/aws"
+	DriverLabel            = "may.konflux-ci.dev/driver"
+	DriverLabelValueAWS    = "aws"
+	instancePollInterval   = 15 * time.Second
+	instanceHealthInterval = 30 * time.Minute
 )
 
 func isAWSDriverHost(object client.Object) bool {

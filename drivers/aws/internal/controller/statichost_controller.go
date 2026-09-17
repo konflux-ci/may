@@ -97,13 +97,13 @@ func (r *StaticHostReconciler) finalize(ctx context.Context, host *maykonfluxcid
 		return ctrl.Result{}, nil
 	}
 
-	var ec2 hostEC2Client
-	if host.GetAnnotations()[internalconfig.AnnotationInstanceID] != "" {
-		var err error
-		ec2, err = r.buildEC2Client(ctx, host)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
+	if host.GetAnnotations()[internalconfig.AnnotationInstanceID] == "" {
+		return ctrl.Result{}, r.removeFinalizer(ctx, host)
+	}
+
+	ec2, err := r.buildEC2Client(ctx, host)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	result, done, err := r.hostStateHelper.EnsureInstanceTerminated(ctx, ec2, host)
