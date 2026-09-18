@@ -2,9 +2,9 @@
 
 MAY AWS Driver manages AWS Instances for MAY.
 
-The driver performs all kind of operations with EC2 instances in Amazon cloud via
+The driver performs all kinds of operations with EC2 instances in Amazon cloud via
 `internal/ec2/` (launch, describe, SSH readiness probing, and terminate). It
-should support two modes of operations - static (long-running instances) and
+should support two modes of operations — static (long-running instances) and
 dynamic (one-time instances).
 
 ## Commands
@@ -20,9 +20,9 @@ dynamic (one-time instances).
 ## Project Layout
 
 - `config/` — manifests
-- `internal/controller/` — controllers
-- `internal/config/` — internal configuration structs and parsers
 - `internal/client/` — EC2 client constructors (OpenShift SA web-identity auth)
+- `internal/config/` — internal configuration structs and parsers
+- `internal/controller/` — controllers
 - `internal/ec2/` — EC2 instance lifecycle operations (launch, describe, SSH probe, terminate); wraps authenticated SDK clients from `internal/client/`
 
 ## Key Conventions
@@ -97,7 +97,7 @@ ServiceAccount name and namespace in the IAM role trust policy.
    | IAM action | Used for |
    |------------|----------|
    | `ec2:RunInstances` | Launch instances |
-   | `ec2:DescribeInstances` | Poll instance state and public IP |
+   | `ec2:DescribeInstances` | Poll instance state and SSH address |
    | `ec2:TerminateInstances` | Dispose instances |
 
    When hosts use instance-profile annotations, the controller role also needs

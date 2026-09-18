@@ -18,10 +18,31 @@ package ec2
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"time"
 )
+
+// SSHProbeError is returned when a TCP probe to sshPort fails.
+type SSHProbeError struct {
+	Addr string
+	Err  error
+}
+
+func (e *SSHProbeError) Error() string {
+	return fmt.Sprintf("ssh probe to %s: %s", e.Addr, e.Err.Error())
+}
+
+func (e *SSHProbeError) Unwrap() error {
+	return e.Err
+}
+
+// IsSSHProbeError reports whether err is or wraps an SSHProbeError.
+func IsSSHProbeError(err error) bool {
+	var probeErr *SSHProbeError
+	return errors.As(err, &probeErr)
+}
 
 const (
 	// sshPort is the default SSH port probed for host readiness.
@@ -38,7 +59,7 @@ func SSHPortOpen(ctx context.Context, host string) error {
 	addr := net.JoinHostPort(host, sshPort)
 	conn, err := dialer.DialContext(ctx, tcpProtocol, addr)
 	if err != nil {
-		return fmt.Errorf("ssh probe to %s: %w", addr, err)
+		return &SSHProbeError{Addr: addr, Err: err}
 	}
 	_ = conn.Close()
 	return nil

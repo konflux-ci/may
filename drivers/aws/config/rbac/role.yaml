@@ -5,27 +5,25 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - may.konflux-ci.dev.konflux-ci.dev
+  - may.konflux-ci.dev
   resources:
   - dynamichosts
   - statichosts
   verbs:
-  - create
-  - delete
   - get
   - list
   - patch
   - update
   - watch
 - apiGroups:
-  - may.konflux-ci.dev.konflux-ci.dev
+  - may.konflux-ci.dev
   resources:
   - dynamichosts/finalizers
   - statichosts/finalizers
   verbs:
   - update
 - apiGroups:
-  - may.konflux-ci.dev.konflux-ci.dev
+  - may.konflux-ci.dev
   resources:
   - dynamichosts/status
   - statichosts/status

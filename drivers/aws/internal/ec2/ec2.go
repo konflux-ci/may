@@ -39,12 +39,17 @@ func NewClient(c *awsec2.Client) *Client {
 }
 
 // LaunchInstance starts a single EC2 instance from cfg and returns its instance ID.
-func (c *Client) LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfiguration) (string, error) {
+// clientToken is passed to RunInstances as ClientToken so retries with the same
+// token do not create additional instances.
+func (c *Client) LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfiguration, clientToken string) (string, error) {
 	if err := validateAWSConfiguration(cfg); err != nil {
 		return "", err
 	}
 
 	input := buildRunInstancesInput(cfg)
+	if clientToken != "" {
+		input.ClientToken = aws.String(clientToken)
+	}
 
 	out, err := c.api.RunInstances(ctx, input)
 	if err != nil {

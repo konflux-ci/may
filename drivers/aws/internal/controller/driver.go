@@ -14,26 +14,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package ec2
+package controller
 
 import (
-	"context"
-	"net"
+	"time"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/labels"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ = Describe("SSHPortOpen", func() {
-	DescribeTable("returns a wrapped error when the SSH port is unreachable",
-		func(ctx context.Context, host string) {
-			err := SSHPortOpen(ctx, host)
-			Expect(IsSSHProbeError(err)).Should(BeTrue())
-			Expect(err).Should(MatchError(
-				HavePrefix("ssh probe to " + net.JoinHostPort(host, sshPort) + ": "),
-			))
-		},
-		Entry("invalid IP address", "999.999.999.999"),
-		Entry("invalid hostname", "not-a-host"),
-	)
-})
+const (
+	AWSDriverFinalizer     = "drivers.may.konflux-ci.dev/aws"
+	DriverLabel            = "may.konflux-ci.dev/driver"
+	DriverLabelValueAWS    = "aws"
+	instancePollInterval   = 15 * time.Second
+	instanceHealthInterval = 30 * time.Minute
+)
+
+func isAWSDriverHost(object client.Object) bool {
+	return labels.
+		SelectorFromSet(labels.Set{DriverLabel: DriverLabelValueAWS}).
+		Matches(labels.Set(object.GetLabels()))
+}

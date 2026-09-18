@@ -29,6 +29,13 @@ const (
 	// Annotation key prefix for all AWS configuration fields.
 	annotationPrefix = "aws.may.konflux-ci.dev/"
 
+	// AnnotationInstanceID stores the EC2 instance ID created by the AWS driver.
+	AnnotationInstanceID = annotationPrefix + "instance-id"
+	// AnnotationSSHAddress stores the SSH address observed by the AWS driver
+	// (public DNS, public IP, or private IP).
+	AnnotationSSHAddress = annotationPrefix + "ssh-address"
+
+	// Configuration annotations.
 	AnnotationRegion                  = annotationPrefix + "region"
 	AnnotationAmi                     = annotationPrefix + "ami"
 	AnnotationInstanceType            = annotationPrefix + "instance-type"
@@ -196,7 +203,7 @@ func configurationFromAnnotations(annotations map[string]string) (AWSConfigurati
 
 	// Parsing strict public address annotation if found.
 	if v, ok := annotations[AnnotationStrictPublicAddress]; ok {
-		strictPublicAddress, err := parseBool(AnnotationStrictPublicAddress, v)
+		strictPublicAddress, err := ParseBool(AnnotationStrictPublicAddress, v)
 		if err != nil {
 			return AWSConfiguration{}, err
 		}
@@ -241,8 +248,8 @@ func parseInt32(annotation, value string) (int32, error) {
 	return int32(v), nil
 }
 
-// parseBool parses a string as a boolean when the annotation is present.
-func parseBool(annotation, value string) (bool, error) {
+// ParseBool parses a string as a boolean when the annotation is present.
+func ParseBool(annotation, value string) (bool, error) {
 	if value == "" {
 		return false, fmt.Errorf("invalid AWS annotation %q: empty value", annotation)
 	}
