@@ -79,7 +79,7 @@ var _ = Describe("StaticHost Controller", func() {
 			Client:          cl,
 			Scheme:          scheme,
 			hostStateHelper: newHostStateHelper(cl),
-			newEC2client: func(context.Context, *maykonfluxcidevv1alpha1.StaticHost) (hostEC2Client, error) {
+			newEC2Client: func(context.Context, *maykonfluxcidevv1alpha1.StaticHost) (hostEC2Client, error) {
 				return &mockEC2Client{
 					sshReady: func(context.Context, string, bool) (string, bool, error) {
 						return "203.0.113.10", true, nil
@@ -112,7 +112,7 @@ var _ = Describe("StaticHost Controller", func() {
 			Client:          cl,
 			Scheme:          scheme,
 			hostStateHelper: newHostStateHelper(cl),
-			newEC2client: func(context.Context, *maykonfluxcidevv1alpha1.StaticHost) (hostEC2Client, error) {
+			newEC2Client: func(context.Context, *maykonfluxcidevv1alpha1.StaticHost) (hostEC2Client, error) {
 				return &mockEC2Client{
 					describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
 						return internalec2.InstanceDetails{State: types.InstanceStateNameTerminated}, nil

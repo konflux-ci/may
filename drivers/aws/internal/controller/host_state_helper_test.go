@@ -140,13 +140,13 @@ var _ = Describe("HostStateHelper", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		result, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+		result, _, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
 			return internalconfig.AWSConfiguration{
 				Region:       "us-east-1",
 				Ami:          "ami-0123456789abcdef0",
 				InstanceType: "m6a.large",
 			}, nil
-		}, &host.Status.State)
+		})
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(result.RequeueAfter).Should(Equal(instancePollInterval))
 
@@ -172,9 +172,9 @@ var _ = Describe("HostStateHelper", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		result, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+		result, _, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
 			return internalconfig.AWSConfiguration{}, nil
-		}, &host.Status.State)
+		})
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(result.RequeueAfter).Should(Equal(instancePollInterval))
 	})
@@ -195,16 +195,17 @@ var _ = Describe("HostStateHelper", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		result, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+		result, actualState, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
 			return internalconfig.AWSConfiguration{}, nil
-		}, &host.Status.State)
+		})
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(result.RequeueAfter).Should(BeZero())
+		Expect(actualState).ShouldNot(BeNil())
+		Expect(*actualState).Should(Equal(maykonfluxcidevv1alpha1.HostActualStateReady))
 
 		updated := &maykonfluxcidevv1alpha1.StaticHost{}
 		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
-		Expect(updated.Status.State).ShouldNot(BeNil())
-		Expect(*updated.Status.State).Should(Equal(maykonfluxcidevv1alpha1.HostActualStateReady))
+		Expect(*updated.Status.State).Should(Equal(maykonfluxcidevv1alpha1.HostActualStatePending))
 		Expect(updated.Annotations[internalconfig.AnnotationSSHAddress]).Should(Equal("203.0.113.10"))
 	})
 
@@ -227,9 +228,9 @@ var _ = Describe("HostStateHelper", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		result, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+		result, _, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
 			return internalconfig.AWSConfiguration{}, nil
-		}, &host.Status.State)
+		})
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(result.RequeueAfter).Should(Equal(instancePollInterval))
 	})
@@ -251,9 +252,9 @@ var _ = Describe("HostStateHelper", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		_, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+		_, _, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
 			return internalconfig.AWSConfiguration{}, nil
-		}, &host.Status.State)
+		})
 		Expect(err).Should(MatchError(expectedErr))
 	})
 
@@ -269,9 +270,9 @@ var _ = Describe("HostStateHelper", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		_, err := reconciler.EnsureInstanceReady(ctx, &mockEC2Client{}, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+		_, _, err := reconciler.EnsureInstanceReady(ctx, &mockEC2Client{}, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
 			return internalconfig.AWSConfiguration{}, expectedErr
-		}, &host.Status.State)
+		})
 		Expect(err).Should(MatchError(expectedErr))
 	})
 
@@ -294,13 +295,13 @@ var _ = Describe("HostStateHelper", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		_, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+		_, _, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
 			return internalconfig.AWSConfiguration{
 				Region:       "us-east-1",
 				Ami:          "ami-0123456789abcdef0",
 				InstanceType: "m6a.large",
 			}, nil
-		}, &host.Status.State)
+		})
 		Expect(err).Should(MatchError(expectedErr))
 	})
 
@@ -322,9 +323,9 @@ var _ = Describe("HostStateHelper", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		_, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+		_, _, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
 			return internalconfig.AWSConfiguration{StrictPublicAddress: true}, nil
-		}, &host.Status.State)
+		})
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(gotStrict).Should(BeTrue())
 	})
@@ -392,9 +393,9 @@ var _ = Describe("HostStateHelper", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		_, err := reconciler.EnsureInstanceReady(canceled, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+		_, _, err := reconciler.EnsureInstanceReady(canceled, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
 			return internalconfig.AWSConfiguration{}, nil
-		}, &host.Status.State)
+		})
 		Expect(err).Should(MatchError(context.Canceled))
 	})
 
@@ -495,7 +496,7 @@ var _ = Describe("HostStateHelper", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		_, err := reconciler.EnsureReady(
+		_, _, err := reconciler.EnsureReady(
 			ctx,
 			&mockEC2Client{},
 			host,
@@ -503,7 +504,6 @@ var _ = Describe("HostStateHelper", func() {
 			func(context.Context) (internalconfig.AWSConfiguration, error) {
 				return internalconfig.AWSConfiguration{}, nil
 			},
-			&host.Status.State,
 		)
 		Expect(err).Should(MatchError(ContainSubstring(`unsupported host actual state "Unknown"`)))
 	})

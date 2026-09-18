@@ -66,7 +66,7 @@ var _ = Describe("DynamicHost Controller", func() {
 			Client:          cl,
 			Scheme:          scheme,
 			hostStateHelper: newHostStateHelper(cl),
-			newEC2client: func(context.Context, *maykonfluxcidevv1alpha1.DynamicHost) (hostEC2Client, error) {
+			newEC2Client: func(context.Context, *maykonfluxcidevv1alpha1.DynamicHost) (hostEC2Client, error) {
 				return &mockEC2Client{
 					sshReady: func(context.Context, string, bool) (string, bool, error) {
 						return "203.0.113.11", true, nil

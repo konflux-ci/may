@@ -24,6 +24,7 @@ import (
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	internalconfig "github.com/konflux-ci/may/drivers/aws/internal/config"
 	internalec2 "github.com/konflux-ci/may/drivers/aws/internal/ec2"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -55,67 +56,69 @@ func (h *HostStateHelper) EnsurePending(ctx context.Context, actualState maykonf
 }
 
 // EnsureReady launches or verifies the EC2 instance when Ready is requested.
+// A non-nil HostActualState is a status transition the caller must persist
+// with Status().Update.
 func (h *HostStateHelper) EnsureReady(
 	ctx context.Context,
 	ec2 hostEC2Client,
 	host client.Object,
 	actualState maykonfluxcidevv1alpha1.HostActualState,
 	awsConfig func(context.Context) (internalconfig.AWSConfiguration, error),
-	statusState **maykonfluxcidevv1alpha1.HostActualState,
-) (ctrl.Result, error) {
+) (ctrl.Result, *maykonfluxcidevv1alpha1.HostActualState, error) {
 	switch actualState {
 	case maykonfluxcidevv1alpha1.HostActualStatePending:
-		return h.EnsureInstanceReady(ctx, ec2, host, awsConfig, statusState)
+		return h.EnsureInstanceReady(ctx, ec2, host, awsConfig)
 	case maykonfluxcidevv1alpha1.HostActualStateReady:
 		cfg, err := awsConfig(ctx)
 		if err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil, err
 		}
-		return h.EnsureInstanceStillRunning(ctx, ec2, host, cfg.StrictPublicAddress)
+		result, err := h.EnsureInstanceStillRunning(ctx, ec2, host, cfg.StrictPublicAddress)
+		return result, nil, err
 	default:
-		return ctrl.Result{}, fmt.Errorf("unsupported host actual state %q", actualState)
+		return ctrl.Result{}, nil, fmt.Errorf("unsupported host actual state %q", actualState)
 	}
 }
 
 // EnsureInstanceReady launches an instance if needed and waits until SSH is reachable.
+// When SSH is reachable it returns HostActualStateReady for the caller to persist.
 func (h *HostStateHelper) EnsureInstanceReady(
 	ctx context.Context,
 	ec2 hostEC2Client,
 	host client.Object,
 	awsConfig func(context.Context) (internalconfig.AWSConfiguration, error),
-	statusState **maykonfluxcidevv1alpha1.HostActualState,
-) (ctrl.Result, error) {
+) (ctrl.Result, *maykonfluxcidevv1alpha1.HostActualState, error) {
 	l := logf.FromContext(ctx)
 
 	cfg, err := awsConfig(ctx)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil, err
 	}
 
 	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceID]
 	if instanceID == "" {
 		instanceID, err = ec2.LaunchInstance(ctx, cfg, string(host.GetUID()))
 		if err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil, err
 		}
 
 		l.Info("EC2 instance launched", "instanceID", instanceID)
 		if err := h.SetInstanceID(ctx, host, instanceID); err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil, err
 		}
-		return ctrl.Result{RequeueAfter: instancePollInterval}, nil
+		return ctrl.Result{RequeueAfter: instancePollInterval}, nil, nil
 	}
 
 	address, ready, err := ec2.SSHReady(ctx, instanceID, cfg.StrictPublicAddress)
 	if err != nil {
 		if ctx.Err() != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil, err
 		}
 		if internalec2.IsSSHProbeError(err) {
 			l.Info("waiting for SSH on address", "instanceID", instanceID, "error", err)
-			return ctrl.Result{RequeueAfter: instancePollInterval}, nil
+			return ctrl.Result{RequeueAfter: instancePollInterval}, nil, nil
 		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil, err
 	}
 	if !ready {
 		if address == "" {
@@ -123,16 +126,14 @@ func (h *HostStateHelper) EnsureInstanceReady(
 		} else {
 			l.Info("waiting for SSH on address", "instanceID", instanceID, "address", address)
 		}
-		return ctrl.Result{RequeueAfter: instancePollInterval}, nil
+		return ctrl.Result{RequeueAfter: instancePollInterval}, nil, nil
 	}
 
 	l.Info("EC2 instance accepts SSH", "instanceID", instanceID, "address", address)
 	if err := h.SetInstanceMetadata(ctx, host, instanceID, address); err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil, err
 	}
-	readyState := maykonfluxcidevv1alpha1.HostActualStateReady
-	*statusState = &readyState
-	return ctrl.Result{}, h.Status().Update(ctx, host)
+	return ctrl.Result{}, ptr.To(maykonfluxcidevv1alpha1.HostActualStateReady), nil
 }
 
 // EnsureInstanceStillRunning reports an error if a Ready host's instance is not running.
