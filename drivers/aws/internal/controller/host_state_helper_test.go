@@ -491,6 +491,30 @@ var _ = Describe("HostStateHelper", func() {
 		Expect(result.RequeueAfter).Should(BeZero())
 	})
 
+	DescribeTable("resets drain states to Pending when Ready is requested",
+		func(ctx context.Context, actualState maykonfluxcidevv1alpha1.HostActualState) {
+			host := newTestStaticHost("drain-to-ready", nil)
+			cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+			reconciler := newHostStateHelper(cl)
+
+			result, nextState, err := reconciler.EnsureReady(
+				ctx,
+				&mockEC2Client{},
+				host,
+				actualState,
+				func(context.Context) (internalconfig.AWSConfiguration, error) {
+					return internalconfig.AWSConfiguration{}, nil
+				},
+			)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.RequeueAfter).Should(BeZero())
+			Expect(nextState).ShouldNot(BeNil())
+			Expect(*nextState).Should(Equal(maykonfluxcidevv1alpha1.HostActualStatePending))
+		},
+		Entry("Draining", maykonfluxcidevv1alpha1.HostActualStateDraining),
+		Entry("Drained", maykonfluxcidevv1alpha1.HostActualStateDrained),
+	)
+
 	It("errors when the actual state is not implemented", func(ctx context.Context) {
 		host := newTestStaticHost("unknown-state", nil)
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()

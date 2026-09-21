@@ -68,6 +68,9 @@ func (h *HostStateHelper) EnsureReady(
 	switch actualState {
 	case maykonfluxcidevv1alpha1.HostActualStatePending:
 		return h.EnsureInstanceReady(ctx, ec2, host, awsConfig)
+	case maykonfluxcidevv1alpha1.HostActualStateDraining, maykonfluxcidevv1alpha1.HostActualStateDrained:
+		// Spec Ready after drain: reset to Pending so the next reconcile can provision.
+		return ctrl.Result{}, ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending), nil
 	case maykonfluxcidevv1alpha1.HostActualStateReady:
 		cfg, err := awsConfig(ctx)
 		if err != nil {

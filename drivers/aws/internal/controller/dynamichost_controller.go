@@ -102,6 +102,8 @@ func (r *DynamicHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 }
 
 func (r *DynamicHostReconciler) finalize(ctx context.Context, host *maykonfluxcidevv1alpha1.DynamicHost) (ctrl.Result, error) {
+	// Other controllers may still need the instance (drain, unregister).
+	// Stay last: wait until only this driver's finalizer remains.
 	if len(host.GetFinalizers()) > 1 {
 		return ctrl.Result{}, nil
 	}
