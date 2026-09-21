@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
@@ -402,15 +403,14 @@ var _ = Describe("HostStateHelper", func() {
 	It("terminates the instance during deletion", func(ctx context.Context) {
 		host := newTestStaticHost("finalize-terminate", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID:          "i-term001",
-				internalconfig.AnnotationStrictPublicAddress: "true",
+				internalconfig.AnnotationInstanceID: "i-term001",
 			}
 		})
 
 		terminated := false
 		mockEC2 := &mockEC2Client{
 			describeInstance: func(_ context.Context, _ string, strictPublicAddress bool) (internalec2.InstanceDetails, error) {
-				Expect(strictPublicAddress).Should(BeTrue())
+				Expect(strictPublicAddress).Should(BeFalse())
 				return internalec2.InstanceDetails{State: types.InstanceStateNameRunning}, nil
 			},
 			terminateInstance: func(context.Context, string) error {
@@ -449,19 +449,24 @@ var _ = Describe("HostStateHelper", func() {
 		Expect(result.RequeueAfter).Should(BeZero())
 	})
 
-	It("errors when the strict-public-address annotation is malformed", func(ctx context.Context) {
+	It("terminates even when the strict-public-address annotation is malformed", func(ctx context.Context) {
 		host := newTestStaticHost("finalize-bad-strict", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
 				internalconfig.AnnotationInstanceID:          "i-term002",
 				internalconfig.AnnotationStrictPublicAddress: "maybe",
 			}
 		})
+		mockEC2 := &mockEC2Client{
+			describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
+				return internalec2.InstanceDetails{State: types.InstanceStateNameTerminated}, nil
+			},
+		}
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		result, done, err := reconciler.EnsureInstanceTerminated(ctx, &mockEC2Client{}, host)
-		Expect(err).Should(MatchError(ContainSubstring(internalconfig.AnnotationStrictPublicAddress)))
-		Expect(done).Should(BeFalse())
+		result, done, err := reconciler.EnsureInstanceTerminated(ctx, mockEC2, host)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(done).Should(BeTrue())
 		Expect(result.RequeueAfter).Should(BeZero())
 	})
 
@@ -529,5 +534,35 @@ var _ = Describe("HostStateHelper", func() {
 			},
 		)
 		Expect(err).Should(MatchError(ContainSubstring(`unsupported host actual state "Unknown"`)))
+	})
+
+	It("does not parse full AWS config when checking a Ready instance", func(ctx context.Context) {
+		host := newTestStaticHost("ready-health", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID:          "i-run002",
+				internalconfig.AnnotationStrictPublicAddress: "true",
+			}
+		})
+		mockEC2 := &mockEC2Client{
+			describeInstance: func(_ context.Context, _ string, strictPublicAddress bool) (internalec2.InstanceDetails, error) {
+				Expect(strictPublicAddress).Should(BeTrue())
+				return internalec2.InstanceDetails{State: types.InstanceStateNameRunning}, nil
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		result, nextState, err := reconciler.EnsureReady(
+			ctx,
+			mockEC2,
+			host,
+			maykonfluxcidevv1alpha1.HostActualStateReady,
+			func(context.Context) (internalconfig.AWSConfiguration, error) {
+				return internalconfig.AWSConfiguration{}, fmt.Errorf("invalid AWS annotation %q: bad disk", internalconfig.AnnotationDisk)
+			},
+		)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(nextState).Should(BeNil())
+		Expect(result.RequeueAfter).Should(Equal(instanceHealthInterval))
 	})
 })

@@ -24,9 +24,15 @@ import (
 )
 
 const (
-	AWSDriverFinalizer     = "drivers.may.konflux-ci.dev/aws"
-	DriverLabel            = "may.konflux-ci.dev/driver"
-	DriverLabelValueAWS    = "aws"
+	// AWSDriverFinalizer is added to hosts managed by this driver.
+	AWSDriverFinalizer = "drivers.may.konflux-ci.dev/aws"
+	// DriverLabel selects hosts this driver should reconcile.
+	DriverLabel = "may.konflux-ci.dev/driver"
+	// DriverLabelValueAWS is the DriverLabel value for AWS-managed hosts.
+	DriverLabelValueAWS = "aws"
+)
+
+const (
 	instancePollInterval   = 15 * time.Second
 	instanceHealthInterval = 30 * time.Minute
 )

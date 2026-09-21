@@ -36,4 +36,10 @@ var _ = Describe("SSHPortOpen", func() {
 		Entry("invalid IP address", "999.999.999.999"),
 		Entry("invalid hostname", "not-a-host"),
 	)
+
+	It("formats a nil wrapped error without panicking", func() {
+		err := &SSHProbeError{Addr: "203.0.113.10:22"}
+		Expect(err.Error()).Should(Equal("ssh probe to 203.0.113.10:22"))
+		Expect((*SSHProbeError)(nil).Error()).Should(Equal("ssh probe: <nil>"))
+	})
 })

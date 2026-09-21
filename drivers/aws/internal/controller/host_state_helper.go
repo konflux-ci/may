@@ -69,11 +69,11 @@ func (h *HostStateHelper) EnsureReady(
 		// not reset actual state or the host never reaches Drained for GC.
 		return ctrl.Result{}, nil, nil
 	case maykonfluxcidevv1alpha1.HostActualStateReady:
-		cfg, err := awsConfig(ctx)
+		strictPublicAddress, err := strictPublicAddressFromHost(host)
 		if err != nil {
 			return ctrl.Result{}, nil, err
 		}
-		result, err := h.EnsureInstanceStillRunning(ctx, ec2, host, cfg.StrictPublicAddress)
+		result, err := h.EnsureInstanceStillRunning(ctx, ec2, host, strictPublicAddress)
 		return result, nil, err
 	default:
 		return ctrl.Result{}, nil, fmt.Errorf("unsupported host actual state %q", actualState)
@@ -170,11 +170,9 @@ func (h *HostStateHelper) EnsureInstanceTerminated(ctx context.Context, ec2 host
 		return ctrl.Result{}, false, fmt.Errorf("EC2 client is required to terminate instance %s", instanceID)
 	}
 
-	strictPublicAddress, err := strictPublicAddressFromHost(host)
-	if err != nil {
-		return ctrl.Result{}, false, err
-	}
-	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID, strictPublicAddress)
+	// Address is unused here; skip annotation parsing so a bad
+	// strict-public-address value cannot block termination.
+	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID, false)
 	if err != nil {
 		return ctrl.Result{}, false, err
 	}
