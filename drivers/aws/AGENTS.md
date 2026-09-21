@@ -34,10 +34,29 @@ dynamic (one-time instances).
 ## Gotchas
 
 - `Host` type is defined in `../../may`.
+- Only hosts labeled `may.konflux-ci.dev/driver: aws` are reconciled.
 - Host CR annotations (`instance-profile`, `security-group`, `security-group-id`,
   etc.) are authorization boundaries: only principals with Host CR write access
   can set them. Scope the controller IAM role's `iam:PassRole` to permitted
   instance profiles and EC2/VPC permissions to permitted security groups.
+- The AWS driver must be the last finalizer on a host. Other controllers
+  (provisioner, runners) may still need the instance to drain or unregister.
+  Finalize waits until only `drivers.may.konflux-ci.dev/aws` remains, then
+  terminates the instance. Reconcile resumes when those other finalizers are
+  removed (watch), not on a timer.
+- The driver does not change `status.State` while it is `Draining` or `Drained`.
+  DynamicHost `spec.status` stays `Ready` during end-of-life; the provisioner
+  owns drain and GC deletes the host once it is `Drained`. Resetting to
+  `Pending` would loop and leak the EC2 instance.
+
+## Driver-managed annotations
+
+Written by the controller after launch / SSH success:
+
+| Annotation | Purpose |
+|------------|---------|
+| `aws.may.konflux-ci.dev/instance-id` | EC2 instance ID |
+| `aws.may.konflux-ci.dev/ssh-address` | Observed SSH address |
 
 ## AWS authentication (standalone OpenShift)
 

@@ -42,17 +42,13 @@ type HostStateHelper struct {
 	client.Client
 }
 
-// EnsurePending is a no-op when the host is already Pending.
+// EnsurePending is a no-op. The AWS driver does not move a host back to Pending
+// once it has left that state.
 func (h *HostStateHelper) EnsurePending(ctx context.Context, actualState maykonfluxcidevv1alpha1.HostActualState) (ctrl.Result, error) {
-	l := logf.FromContext(ctx)
-	switch actualState {
-	case maykonfluxcidevv1alpha1.HostActualStatePending:
-		l.Info("host is already Pending")
-		return ctrl.Result{}, nil
-	default:
-		l.Info("host cannot move back to Pending", "actualState", actualState)
-		return ctrl.Result{}, nil
+	if actualState != maykonfluxcidevv1alpha1.HostActualStatePending {
+		logf.FromContext(ctx).Info("host cannot move back to Pending", "actualState", actualState)
 	}
+	return ctrl.Result{}, nil
 }
 
 // EnsureReady launches or verifies the EC2 instance when Ready is requested.
@@ -69,8 +65,9 @@ func (h *HostStateHelper) EnsureReady(
 	case maykonfluxcidevv1alpha1.HostActualStatePending:
 		return h.EnsureInstanceReady(ctx, ec2, host, awsConfig)
 	case maykonfluxcidevv1alpha1.HostActualStateDraining, maykonfluxcidevv1alpha1.HostActualStateDrained:
-		// Spec Ready after drain: reset to Pending so the next reconcile can provision.
-		return ctrl.Result{}, ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending), nil
+		// Provisioner owns drain. Spec often stays Ready (DynamicHost), so do
+		// not reset actual state or the host never reaches Drained for GC.
+		return ctrl.Result{}, nil, nil
 	case maykonfluxcidevv1alpha1.HostActualStateReady:
 		cfg, err := awsConfig(ctx)
 		if err != nil {
@@ -199,27 +196,29 @@ func (h *HostStateHelper) EnsureInstanceTerminated(ctx context.Context, ec2 host
 
 // SetInstanceMetadata patches the instance ID and SSH address onto the host.
 func (h *HostStateHelper) SetInstanceMetadata(ctx context.Context, host client.Object, instanceID, address string) error {
-	base := host.DeepCopyObject().(client.Object)
-	patch := client.MergeFrom(base)
-	annotations := host.GetAnnotations()
-	if annotations == nil {
-		annotations = map[string]string{}
-	}
-	annotations[internalconfig.AnnotationInstanceID] = instanceID
-	annotations[internalconfig.AnnotationSSHAddress] = address
-	host.SetAnnotations(annotations)
-	return h.Patch(ctx, host, patch)
+	return h.patchAnnotations(ctx, host, map[string]string{
+		internalconfig.AnnotationInstanceID: instanceID,
+		internalconfig.AnnotationSSHAddress: address,
+	})
 }
 
 // SetInstanceID patches the instance ID onto the host.
 func (h *HostStateHelper) SetInstanceID(ctx context.Context, host client.Object, instanceID string) error {
+	return h.patchAnnotations(ctx, host, map[string]string{
+		internalconfig.AnnotationInstanceID: instanceID,
+	})
+}
+
+func (h *HostStateHelper) patchAnnotations(ctx context.Context, host client.Object, values map[string]string) error {
 	base := host.DeepCopyObject().(client.Object)
 	patch := client.MergeFrom(base)
 	annotations := host.GetAnnotations()
 	if annotations == nil {
 		annotations = map[string]string{}
 	}
-	annotations[internalconfig.AnnotationInstanceID] = instanceID
+	for k, v := range values {
+		annotations[k] = v
+	}
 	host.SetAnnotations(annotations)
 	return h.Patch(ctx, host, patch)
 }

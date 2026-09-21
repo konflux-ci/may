@@ -491,7 +491,7 @@ var _ = Describe("HostStateHelper", func() {
 		Expect(result.RequeueAfter).Should(BeZero())
 	})
 
-	DescribeTable("resets drain states to Pending when Ready is requested",
+	DescribeTable("leaves drain states unchanged when Ready is requested",
 		func(ctx context.Context, actualState maykonfluxcidevv1alpha1.HostActualState) {
 			host := newTestStaticHost("drain-to-ready", nil)
 			cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
@@ -508,8 +508,7 @@ var _ = Describe("HostStateHelper", func() {
 			)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(result.RequeueAfter).Should(BeZero())
-			Expect(nextState).ShouldNot(BeNil())
-			Expect(*nextState).Should(Equal(maykonfluxcidevv1alpha1.HostActualStatePending))
+			Expect(nextState).Should(BeNil())
 		},
 		Entry("Draining", maykonfluxcidevv1alpha1.HostActualStateDraining),
 		Entry("Drained", maykonfluxcidevv1alpha1.HostActualStateDrained),

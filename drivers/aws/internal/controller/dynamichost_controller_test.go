@@ -84,4 +84,51 @@ var _ = Describe("DynamicHost Controller", func() {
 		Expect(*updated.Status.State).Should(Equal(maykonfluxcidevv1alpha1.HostActualStateReady))
 		Expect(updated.Annotations[internalconfig.AnnotationSSHAddress]).Should(Equal("203.0.113.11"))
 	})
+
+	It("leaves Draining unchanged while spec stays Ready", func(ctx context.Context) {
+		host := &maykonfluxcidevv1alpha1.DynamicHost{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "dynamic-draining",
+				Namespace:  "default",
+				Finalizers: []string{AWSDriverFinalizer},
+				Labels: map[string]string{
+					DriverLabel: DriverLabelValueAWS,
+				},
+				Annotations: map[string]string{
+					internalconfig.AnnotationInstanceID: "i-dynamic002",
+				},
+			},
+			Spec: maykonfluxcidevv1alpha1.DynamicHostSpec{
+				HostCoreSpec: maykonfluxcidevv1alpha1.HostCoreSpec{
+					Flavor: "test-flavor",
+					Status: maykonfluxcidevv1alpha1.HostStatusReady,
+				},
+				Runner: maykonfluxcidevv1alpha1.HostSpecRunner{
+					Resources: corev1.ResourceList{
+						corev1.ResourceCPU: resource.MustParse("1"),
+					},
+				},
+			},
+		}
+		host.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStateDraining)
+
+		scheme := newTestScheme()
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := &DynamicHostReconciler{
+			Client:          cl,
+			Scheme:          scheme,
+			hostStateHelper: newHostStateHelper(cl),
+			newEC2Client: func(context.Context, *maykonfluxcidevv1alpha1.DynamicHost) (hostEC2Client, error) {
+				return &mockEC2Client{}, nil
+			},
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
+		Expect(err).ShouldNot(HaveOccurred())
+
+		updated := &maykonfluxcidevv1alpha1.DynamicHost{}
+		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
+		Expect(updated.Status.State).ShouldNot(BeNil())
+		Expect(*updated.Status.State).Should(Equal(maykonfluxcidevv1alpha1.HostActualStateDraining))
+	})
 })
