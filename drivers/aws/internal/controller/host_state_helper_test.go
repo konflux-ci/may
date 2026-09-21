@@ -262,9 +262,6 @@ var _ = Describe("HostStateHelper", func() {
 	It("returns an AWS configuration error", func(ctx context.Context) {
 		host := newTestStaticHost("bad-config", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
-			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-config001",
-			}
 		})
 
 		expectedErr := errors.New("invalid AWS annotation")
@@ -310,7 +307,8 @@ var _ = Describe("HostStateHelper", func() {
 		host := newTestStaticHost("strict-ssh", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-strict001",
+				internalconfig.AnnotationInstanceID:          "i-strict001",
+				internalconfig.AnnotationStrictPublicAddress: "true",
 			}
 		})
 
@@ -325,7 +323,7 @@ var _ = Describe("HostStateHelper", func() {
 		reconciler := newHostStateHelper(cl)
 
 		_, _, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
-			return internalconfig.AWSConfiguration{StrictPublicAddress: true}, nil
+			return internalconfig.AWSConfiguration{}, nil
 		})
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(gotStrict).Should(BeTrue())
@@ -494,6 +492,46 @@ var _ = Describe("HostStateHelper", func() {
 		Expect(err).Should(MatchError(ContainSubstring("EC2 client is required")))
 		Expect(done).Should(BeFalse())
 		Expect(result.RequeueAfter).Should(BeZero())
+	})
+
+	It("waits to finalize while other finalizers remain", func(ctx context.Context) {
+		host := newTestStaticHost("finalize-wait", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Finalizers = []string{AWSDriverFinalizer, "example.com/other"}
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID: "i-wait-fin",
+			}
+		})
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		built := false
+		result, err := reconciler.Finalize(ctx, host, func(context.Context) (hostEC2Client, error) {
+			built = true
+			return &mockEC2Client{}, nil
+		})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(result.RequeueAfter).Should(BeZero())
+		Expect(built).Should(BeFalse())
+		Expect(host.Finalizers).Should(ContainElement(AWSDriverFinalizer))
+		Expect(host.Finalizers).Should(ContainElement("example.com/other"))
+	})
+
+	It("removes the driver finalizer when no instance was created", func(ctx context.Context) {
+		host := newTestStaticHost("finalize-drop", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Finalizers = []string{AWSDriverFinalizer}
+		})
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		result, err := reconciler.Finalize(ctx, host, func(context.Context) (hostEC2Client, error) {
+			return nil, fmt.Errorf("EC2 client should not be built")
+		})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(result.RequeueAfter).Should(BeZero())
+
+		updated := &maykonfluxcidevv1alpha1.StaticHost{}
+		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
+		Expect(updated.Finalizers).ShouldNot(ContainElement(AWSDriverFinalizer))
 	})
 
 	DescribeTable("leaves drain states unchanged when Ready is requested",

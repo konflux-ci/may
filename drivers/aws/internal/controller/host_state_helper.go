@@ -27,6 +27,7 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -88,48 +89,51 @@ func (h *HostStateHelper) EnsureInstanceReady(
 	host client.Object,
 	awsConfig func(context.Context) (internalconfig.AWSConfiguration, error),
 ) (ctrl.Result, *maykonfluxcidevv1alpha1.HostActualState, error) {
-	l := logf.FromContext(ctx)
-
-	cfg, err := awsConfig(ctx)
-	if err != nil {
-		return ctrl.Result{}, nil, err
-	}
+	log := logf.FromContext(ctx)
 
 	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceID]
 	if instanceID == "" {
+		cfg, err := awsConfig(ctx)
+		if err != nil {
+			return ctrl.Result{}, nil, err
+		}
 		instanceID, err = ec2.LaunchInstance(ctx, cfg, string(host.GetUID()))
 		if err != nil {
 			return ctrl.Result{}, nil, err
 		}
 
-		l.Info("EC2 instance launched", "instanceID", instanceID)
+		log.Info("EC2 instance launched", "instanceID", instanceID)
 		if err := h.SetInstanceID(ctx, host, instanceID); err != nil {
 			return ctrl.Result{}, nil, err
 		}
 		return ctrl.Result{RequeueAfter: instancePollInterval}, nil, nil
 	}
 
-	address, ready, err := ec2.SSHReady(ctx, instanceID, cfg.StrictPublicAddress)
+	strictPublicAddress, err := strictPublicAddressFromHost(host)
+	if err != nil {
+		return ctrl.Result{}, nil, err
+	}
+	address, ready, err := ec2.SSHReady(ctx, instanceID, strictPublicAddress)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctrl.Result{}, nil, err
 		}
 		if internalec2.IsSSHProbeError(err) {
-			l.Info("waiting for SSH on address", "instanceID", instanceID, "error", err)
+			log.Info("waiting for SSH on address", "instanceID", instanceID, "error", err)
 			return ctrl.Result{RequeueAfter: instancePollInterval}, nil, nil
 		}
 		return ctrl.Result{}, nil, err
 	}
 	if !ready {
 		if address == "" {
-			l.Info("waiting for EC2 instance SSH address", "instanceID", instanceID)
+			log.Info("waiting for EC2 instance SSH address", "instanceID", instanceID)
 		} else {
-			l.Info("waiting for SSH on address", "instanceID", instanceID, "address", address)
+			log.Info("waiting for SSH on address", "instanceID", instanceID, "address", address)
 		}
 		return ctrl.Result{RequeueAfter: instancePollInterval}, nil, nil
 	}
 
-	l.Info("EC2 instance accepts SSH", "instanceID", instanceID, "address", address)
+	log.Info("EC2 instance accepts SSH", "instanceID", instanceID, "address", address)
 	if err := h.SetInstanceMetadata(ctx, host, instanceID, address); err != nil {
 		return ctrl.Result{}, nil, err
 	}
@@ -177,19 +181,53 @@ func (h *HostStateHelper) EnsureInstanceTerminated(ctx context.Context, ec2 host
 		return ctrl.Result{}, false, err
 	}
 
+	log := logf.FromContext(ctx)
 	switch instanceDetails.State {
 	case types.InstanceStateNameTerminated:
 		return ctrl.Result{}, true, nil
 	case types.InstanceStateNameShuttingDown:
-		logf.FromContext(ctx).Info("waiting for EC2 instance termination", "instanceID", instanceID)
+		log.Info("waiting for EC2 instance termination", "instanceID", instanceID)
 		return ctrl.Result{RequeueAfter: instancePollInterval}, false, nil
 	default:
 		if err := ec2.TerminateInstance(ctx, instanceID); err != nil {
 			return ctrl.Result{}, false, err
 		}
-		logf.FromContext(ctx).Info("terminating EC2 instance", "instanceID", instanceID)
+		log.Info("terminating EC2 instance", "instanceID", instanceID)
 		return ctrl.Result{RequeueAfter: instancePollInterval}, false, nil
 	}
+}
+
+// Finalize terminates the instance if needed and removes the AWS driver finalizer.
+// Other controllers may still need the instance (drain, unregister). Stay last:
+// wait until only this driver's finalizer remains.
+func (h *HostStateHelper) Finalize(ctx context.Context, host client.Object, newEC2 func(context.Context) (hostEC2Client, error)) (ctrl.Result, error) {
+	if len(host.GetFinalizers()) > 1 {
+		return ctrl.Result{}, nil
+	}
+
+	if host.GetAnnotations()[internalconfig.AnnotationInstanceID] == "" {
+		return ctrl.Result{}, h.RemoveFinalizer(ctx, host)
+	}
+
+	ec2, err := newEC2(ctx)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	result, done, err := h.EnsureInstanceTerminated(ctx, ec2, host)
+	if err != nil || !done {
+		return result, err
+	}
+
+	return ctrl.Result{}, h.RemoveFinalizer(ctx, host)
+}
+
+// RemoveFinalizer drops the AWS driver finalizer from the host.
+func (h *HostStateHelper) RemoveFinalizer(ctx context.Context, host client.Object) error {
+	if controllerutil.RemoveFinalizer(host, AWSDriverFinalizer) {
+		return h.Update(ctx, host)
+	}
+	return nil
 }
 
 // SetInstanceMetadata patches the instance ID and SSH address onto the host.

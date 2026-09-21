@@ -55,7 +55,9 @@ func (r *DynamicHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if !host.GetDeletionTimestamp().IsZero() {
-		return r.finalize(ctx, host)
+		return r.hostStateHelper.Finalize(ctx, host, func(ctx context.Context) (hostEC2Client, error) {
+			return r.buildEC2Client(ctx, host)
+		})
 	}
 
 	if controllerutil.AddFinalizer(host, AWSDriverFinalizer) {
@@ -99,37 +101,6 @@ func (r *DynamicHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		logf.FromContext(ctx).Info("requested status not implemented", "requestedStatus", host.Spec.Status)
 		return ctrl.Result{}, nil
 	}
-}
-
-func (r *DynamicHostReconciler) finalize(ctx context.Context, host *maykonfluxcidevv1alpha1.DynamicHost) (ctrl.Result, error) {
-	// Other controllers may still need the instance (drain, unregister).
-	// Stay last: wait until only this driver's finalizer remains.
-	if len(host.GetFinalizers()) > 1 {
-		return ctrl.Result{}, nil
-	}
-
-	if host.GetAnnotations()[internalconfig.AnnotationInstanceID] == "" {
-		return ctrl.Result{}, r.removeFinalizer(ctx, host)
-	}
-
-	ec2, err := r.buildEC2Client(ctx, host)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	result, done, err := r.hostStateHelper.EnsureInstanceTerminated(ctx, ec2, host)
-	if err != nil || !done {
-		return result, err
-	}
-
-	return ctrl.Result{}, r.removeFinalizer(ctx, host)
-}
-
-func (r *DynamicHostReconciler) removeFinalizer(ctx context.Context, host *maykonfluxcidevv1alpha1.DynamicHost) error {
-	if controllerutil.RemoveFinalizer(host, AWSDriverFinalizer) {
-		return r.Update(ctx, host)
-	}
-	return nil
 }
 
 func (r *DynamicHostReconciler) buildEC2Client(ctx context.Context, host *maykonfluxcidevv1alpha1.DynamicHost) (hostEC2Client, error) {
