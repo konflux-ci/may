@@ -31,13 +31,6 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type hostEC2Client interface {
-	LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfiguration, clientToken string) (string, error)
-	DescribeInstance(ctx context.Context, instanceID string, strictPublicAddress bool) (internalec2.InstanceDetails, error)
-	SSHReady(ctx context.Context, instanceID string, strictPublicAddress bool) (string, bool, error)
-	TerminateInstance(ctx context.Context, instanceID string) error
-}
-
 // HostStateHelper implements shared EC2 lifecycle steps for AWS driver hosts.
 type HostStateHelper struct {
 	client.Client
@@ -53,23 +46,32 @@ func (h *HostStateHelper) EnsurePending(ctx context.Context, actualState maykonf
 }
 
 // EnsureReady launches or verifies the EC2 instance when Ready is requested.
-// A non-nil HostActualState is a status transition the caller must persist
-// with Status().Update.
+// newEC2 is called only when an instance must be launched or health-checked,
+// not for Draining or Drained. A non-nil HostActualState is a status
+// transition the caller must persist with Status().Update.
 func (h *HostStateHelper) EnsureReady(
 	ctx context.Context,
-	ec2 hostEC2Client,
 	host client.Object,
 	actualState maykonfluxcidevv1alpha1.HostActualState,
+	newEC2 func(context.Context) (hostEC2Client, error),
 	awsConfig func(context.Context) (internalconfig.AWSConfiguration, error),
 ) (ctrl.Result, *maykonfluxcidevv1alpha1.HostActualState, error) {
 	switch actualState {
 	case maykonfluxcidevv1alpha1.HostActualStatePending:
+		ec2, err := newEC2(ctx)
+		if err != nil {
+			return ctrl.Result{}, nil, err
+		}
 		return h.EnsureInstanceReady(ctx, ec2, host, awsConfig)
 	case maykonfluxcidevv1alpha1.HostActualStateDraining, maykonfluxcidevv1alpha1.HostActualStateDrained:
 		// Provisioner owns drain. Spec often stays Ready (DynamicHost), so do
 		// not reset actual state or the host never reaches Drained for GC.
 		return ctrl.Result{}, nil, nil
 	case maykonfluxcidevv1alpha1.HostActualStateReady:
+		ec2, err := newEC2(ctx)
+		if err != nil {
+			return ctrl.Result{}, nil, err
+		}
 		strictPublicAddress, err := strictPublicAddressFromHost(host)
 		if err != nil {
 			return ctrl.Result{}, nil, err

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	internalconfig "github.com/konflux-ci/may/drivers/aws/internal/config"
@@ -119,7 +120,7 @@ var _ = Describe("DynamicHost Controller", func() {
 			Scheme:          scheme,
 			hostStateHelper: newHostStateHelper(cl),
 			newEC2Client: func(context.Context, *maykonfluxcidevv1alpha1.DynamicHost) (hostEC2Client, error) {
-				return &mockEC2Client{}, nil
+				return nil, fmt.Errorf("EC2 client should not be built")
 			},
 		}
 

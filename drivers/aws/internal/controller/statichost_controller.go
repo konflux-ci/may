@@ -74,15 +74,13 @@ func (r *StaticHostReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	case maykonfluxcidevv1alpha1.HostStatusPending:
 		return r.hostStateHelper.EnsurePending(ctx, *host.Status.State)
 	case maykonfluxcidevv1alpha1.HostStatusReady:
-		ec2, err := r.buildEC2Client(ctx, host)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
 		result, actualState, err := r.hostStateHelper.EnsureReady(
 			ctx,
-			ec2,
 			host,
 			*host.Status.State,
+			func(ctx context.Context) (hostEC2Client, error) {
+				return r.buildEC2Client(ctx, host)
+			},
 			func(ctx context.Context) (internalconfig.AWSConfiguration, error) {
 				return internalconfig.GetStaticAWSConfiguration(ctx, host)
 			},

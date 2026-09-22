@@ -542,9 +542,11 @@ var _ = Describe("HostStateHelper", func() {
 
 			result, nextState, err := reconciler.EnsureReady(
 				ctx,
-				&mockEC2Client{},
 				host,
 				actualState,
+				func(context.Context) (hostEC2Client, error) {
+					return nil, fmt.Errorf("EC2 client should not be built")
+				},
 				func(context.Context) (internalconfig.AWSConfiguration, error) {
 					return internalconfig.AWSConfiguration{}, nil
 				},
@@ -564,9 +566,11 @@ var _ = Describe("HostStateHelper", func() {
 
 		_, _, err := reconciler.EnsureReady(
 			ctx,
-			&mockEC2Client{},
 			host,
 			maykonfluxcidevv1alpha1.HostActualState("Unknown"),
+			func(context.Context) (hostEC2Client, error) {
+				return nil, fmt.Errorf("EC2 client should not be built")
+			},
 			func(context.Context) (internalconfig.AWSConfiguration, error) {
 				return internalconfig.AWSConfiguration{}, nil
 			},
@@ -592,9 +596,11 @@ var _ = Describe("HostStateHelper", func() {
 
 		result, nextState, err := reconciler.EnsureReady(
 			ctx,
-			mockEC2,
 			host,
 			maykonfluxcidevv1alpha1.HostActualStateReady,
+			func(context.Context) (hostEC2Client, error) {
+				return mockEC2, nil
+			},
 			func(context.Context) (internalconfig.AWSConfiguration, error) {
 				return internalconfig.AWSConfiguration{}, fmt.Errorf("invalid AWS annotation %q: bad disk", internalconfig.AnnotationDisk)
 			},

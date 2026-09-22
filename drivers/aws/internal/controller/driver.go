@@ -17,8 +17,11 @@ limitations under the License.
 package controller
 
 import (
+	"context"
 	"time"
 
+	internalconfig "github.com/konflux-ci/may/drivers/aws/internal/config"
+	internalec2 "github.com/konflux-ci/may/drivers/aws/internal/ec2"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -36,6 +39,14 @@ const (
 	instancePollInterval   = 15 * time.Second
 	instanceHealthInterval = 30 * time.Minute
 )
+
+// hostEC2Client is the EC2 lifecycle surface used by host reconcilers.
+type hostEC2Client interface {
+	LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfiguration, clientToken string) (string, error)
+	DescribeInstance(ctx context.Context, instanceID string, strictPublicAddress bool) (internalec2.InstanceDetails, error)
+	SSHReady(ctx context.Context, instanceID string, strictPublicAddress bool) (string, bool, error)
+	TerminateInstance(ctx context.Context, instanceID string) error
+}
 
 func isAWSDriverHost(object client.Object) bool {
 	return labels.
