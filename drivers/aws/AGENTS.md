@@ -42,7 +42,8 @@ dynamic (one-time instances).
 - The AWS driver must be the last finalizer on a host. Other controllers
   (provisioner, runners) may still need the instance to drain or unregister.
   Finalize waits until only `drivers.may.konflux-ci.dev/aws` remains, then
-  terminates the instance. Reconcile resumes when those other finalizers are
+  terminates the instance. If that finalizer is already gone, Finalize does
+  not terminate. Reconcile resumes when those other finalizers are
   removed (watch), not on a timer.
 - The driver does not change `status.State` while it is `Draining` or `Drained`.
   DynamicHost `spec.status` stays `Ready` during end-of-life; the provisioner

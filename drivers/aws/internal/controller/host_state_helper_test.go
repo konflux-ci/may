@@ -384,6 +384,29 @@ var _ = Describe("HostStateHelper", func() {
 		Expect(result.RequeueAfter).Should(BeZero())
 	})
 
+	It("reports unknown when a Ready host's instance state is empty", func(ctx context.Context) {
+		host := newTestStaticHost("empty-state", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID: "i-empty001",
+			}
+		})
+		mockEC2 := &mockEC2Client{
+			describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
+				return internalec2.InstanceDetails{}, nil
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		_, nextState, err := reconciler.EnsureInstanceStillRunning(ctx, mockEC2, host, false)
+		Expect(err).Should(MatchError(And(
+			ContainSubstring("unknown"),
+			ContainSubstring("not running"),
+		)))
+		Expect(nextState).ShouldNot(BeNil())
+		Expect(*nextState).Should(Equal(maykonfluxcidevv1alpha1.HostActualStateDraining))
+	})
+
 	It("requeues a running Ready host to catch later EC2 state changes", func(ctx context.Context) {
 		host := newTestStaticHost("still-running", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
@@ -546,6 +569,27 @@ var _ = Describe("HostStateHelper", func() {
 		Expect(built).Should(BeFalse())
 		Expect(host.Finalizers).Should(ContainElement(AWSDriverFinalizer))
 		Expect(host.Finalizers).Should(ContainElement("example.com/other"))
+	})
+
+	It("does not terminate when the driver finalizer is not present", func(ctx context.Context) {
+		host := newTestStaticHost("finalize-foreign", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Finalizers = []string{"example.com/other"}
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID: "i-foreign-fin",
+			}
+		})
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		built := false
+		result, err := reconciler.Finalize(ctx, host, func(context.Context) (hostEC2Client, error) {
+			built = true
+			return &mockEC2Client{}, nil
+		})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(result.RequeueAfter).Should(BeZero())
+		Expect(built).Should(BeFalse())
+		Expect(host.Finalizers).Should(Equal([]string{"example.com/other"}))
 	})
 
 	It("removes the driver finalizer when no instance was created", func(ctx context.Context) {

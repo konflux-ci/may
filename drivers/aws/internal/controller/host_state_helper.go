@@ -165,7 +165,7 @@ func (h *HostStateHelper) EnsureInstanceStillRunning(ctx context.Context, ec2 ho
 	case types.InstanceStateNameRunning:
 		return ctrl.Result{RequeueAfter: instanceHealthInterval}, nil, nil
 	default:
-		return instanceLost(fmt.Errorf("EC2 instance %s is %s and is not running", instanceID, instanceDetails.State))
+		return instanceLost(&internalec2.InstanceNotRunningError{InstanceID: instanceID, State: instanceDetails.State})
 	}
 }
 
@@ -202,7 +202,7 @@ func (h *HostStateHelper) EnsureInstanceTerminated(ctx context.Context, ec2 host
 		if err := ec2.TerminateInstance(ctx, instanceID); err != nil {
 			return ctrl.Result{}, false, err
 		}
-		log.Info("terminating EC2 instance", "instanceID", instanceID)
+		log.Info("EC2 instance termination requested", "instanceID", instanceID)
 		return ctrl.Result{RequeueAfter: instancePollInterval}, false, nil
 	}
 }
@@ -211,6 +211,9 @@ func (h *HostStateHelper) EnsureInstanceTerminated(ctx context.Context, ec2 host
 // Other controllers may still need the instance (drain, unregister). Stay last:
 // wait until only this driver's finalizer remains.
 func (h *HostStateHelper) Finalize(ctx context.Context, host client.Object, newEC2 func(context.Context) (hostEC2Client, error)) (ctrl.Result, error) {
+	if !controllerutil.ContainsFinalizer(host, AWSDriverFinalizer) {
+		return ctrl.Result{}, nil
+	}
 	if len(host.GetFinalizers()) > 1 {
 		return ctrl.Result{}, nil
 	}

@@ -108,12 +108,20 @@ func (e *InstanceNotRunningError) Error() string {
 	if e == nil {
 		return "EC2 instance is not running"
 	}
+	state := instanceStateName(e.State)
 	switch e.State {
 	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated:
-		return fmt.Sprintf("EC2 instance %s is %s", e.InstanceID, e.State)
+		return fmt.Sprintf("EC2 instance %s is %s", e.InstanceID, state)
 	default:
-		return fmt.Sprintf("EC2 instance %s is %s and is not running", e.InstanceID, e.State)
+		return fmt.Sprintf("EC2 instance %s is %s and is not running", e.InstanceID, state)
 	}
+}
+
+func instanceStateName(state types.InstanceStateName) string {
+	if state == "" {
+		return "unknown"
+	}
+	return string(state)
 }
 
 // IsInstanceNotRunningError reports whether err is or wraps an InstanceNotRunningError.
