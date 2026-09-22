@@ -76,8 +76,7 @@ func (h *HostStateHelper) EnsureReady(
 		if err != nil {
 			return ctrl.Result{}, nil, err
 		}
-		result, err := h.EnsureInstanceStillRunning(ctx, ec2, host, strictPublicAddress)
-		return result, nil, err
+		return h.EnsureInstanceStillRunning(ctx, ec2, host, strictPublicAddress)
 	default:
 		return ctrl.Result{}, nil, fmt.Errorf("unsupported host actual state %q", actualState)
 	}
@@ -144,24 +143,25 @@ func (h *HostStateHelper) EnsureInstanceReady(
 
 // EnsureInstanceStillRunning reports an error if a Ready host's instance is not running.
 // A running instance is requeued after instanceHealthInterval so out-of-band EC2 changes are noticed.
-func (h *HostStateHelper) EnsureInstanceStillRunning(ctx context.Context, ec2 hostEC2Client, host client.Object, strictPublicAddress bool) (ctrl.Result, error) {
+// When the instance is gone, the returned HostActualState is Draining so callers can persist
+// that transition even while returning the error. There is no Failed actual state;
+// Pending would relaunch and leak, so drain lets the provisioner stop using the host.
+func (h *HostStateHelper) EnsureInstanceStillRunning(ctx context.Context, ec2 hostEC2Client, host client.Object, strictPublicAddress bool) (ctrl.Result, *maykonfluxcidevv1alpha1.HostActualState, error) {
 	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceID]
 	if instanceID == "" {
-		return ctrl.Result{}, fmt.Errorf("host is Ready but annotation %q is missing", internalconfig.AnnotationInstanceID)
+		return ctrl.Result{}, ptr.To(maykonfluxcidevv1alpha1.HostActualStateDraining), fmt.Errorf("host is Ready but annotation %q is missing", internalconfig.AnnotationInstanceID)
 	}
 
 	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID, strictPublicAddress)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil, err
 	}
 
 	switch instanceDetails.State {
 	case types.InstanceStateNameRunning:
-		return ctrl.Result{RequeueAfter: instanceHealthInterval}, nil
-	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated:
-		return ctrl.Result{}, fmt.Errorf("EC2 instance %s is %s", instanceID, instanceDetails.State)
+		return ctrl.Result{RequeueAfter: instanceHealthInterval}, nil, nil
 	default:
-		return ctrl.Result{}, fmt.Errorf("EC2 instance %s is %s and is not running", instanceID, instanceDetails.State)
+		return ctrl.Result{}, ptr.To(maykonfluxcidevv1alpha1.HostActualStateDraining), fmt.Errorf("EC2 instance %s is %s and is not running", instanceID, instanceDetails.State)
 	}
 }
 

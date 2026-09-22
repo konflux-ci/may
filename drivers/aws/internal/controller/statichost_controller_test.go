@@ -37,7 +37,7 @@ var _ = Describe("StaticHost Controller", func() {
 		host := newTestStaticHost("add-finalizer", nil)
 		scheme := newTestScheme()
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
-		reconciler := &StaticHostReconciler{Client: cl, Scheme: scheme, hostStateHelper: newHostStateHelper(cl)}
+		reconciler := NewStaticHostReconciler(cl, scheme)
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
 		Expect(err).ShouldNot(HaveOccurred())
@@ -53,7 +53,7 @@ var _ = Describe("StaticHost Controller", func() {
 		})
 		scheme := newTestScheme()
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
-		reconciler := &StaticHostReconciler{Client: cl, Scheme: scheme, hostStateHelper: newHostStateHelper(cl)}
+		reconciler := NewStaticHostReconciler(cl, scheme)
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
 		Expect(err).ShouldNot(HaveOccurred())
@@ -75,17 +75,13 @@ var _ = Describe("StaticHost Controller", func() {
 		})
 		scheme := newTestScheme()
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
-		reconciler := &StaticHostReconciler{
-			Client:          cl,
-			Scheme:          scheme,
-			hostStateHelper: newHostStateHelper(cl),
-			newEC2Client: func(context.Context, *maykonfluxcidevv1alpha1.StaticHost) (hostEC2Client, error) {
-				return &mockEC2Client{
-					sshReady: func(context.Context, string, bool) (string, bool, error) {
-						return "203.0.113.10", true, nil
-					},
-				}, nil
-			},
+		reconciler := NewStaticHostReconciler(cl, scheme)
+		reconciler.newEC2Client = func(context.Context, *maykonfluxcidevv1alpha1.StaticHost) (hostEC2Client, error) {
+			return &mockEC2Client{
+				sshReady: func(context.Context, string, bool) (string, bool, error) {
+					return "203.0.113.10", true, nil
+				},
+			}, nil
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
@@ -95,6 +91,35 @@ var _ = Describe("StaticHost Controller", func() {
 		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
 		Expect(updated.Status.State).ShouldNot(BeNil())
 		Expect(*updated.Status.State).Should(Equal(maykonfluxcidevv1alpha1.HostActualStateReady))
+	})
+
+	It("persists Draining when a Ready instance is gone", func(ctx context.Context) {
+		host := newTestStaticHost("static-dead", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Finalizers = []string{AWSDriverFinalizer}
+			h.Spec.Status = maykonfluxcidevv1alpha1.HostStatusReady
+			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStateReady)
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID: "i-dead-static",
+			}
+		})
+		scheme := newTestScheme()
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := NewStaticHostReconciler(cl, scheme)
+		reconciler.newEC2Client = func(context.Context, *maykonfluxcidevv1alpha1.StaticHost) (hostEC2Client, error) {
+			return &mockEC2Client{
+				describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
+					return internalec2.InstanceDetails{State: types.InstanceStateNameTerminated}, nil
+				},
+			}, nil
+		}
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
+		Expect(err).Should(HaveOccurred())
+
+		updated := &maykonfluxcidevv1alpha1.StaticHost{}
+		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
+		Expect(updated.Status.State).ShouldNot(BeNil())
+		Expect(*updated.Status.State).Should(Equal(maykonfluxcidevv1alpha1.HostActualStateDraining))
 	})
 
 	It("removes the finalizer when the instance is terminated", func(ctx context.Context) {
@@ -108,17 +133,13 @@ var _ = Describe("StaticHost Controller", func() {
 		})
 		scheme := newTestScheme()
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
-		reconciler := &StaticHostReconciler{
-			Client:          cl,
-			Scheme:          scheme,
-			hostStateHelper: newHostStateHelper(cl),
-			newEC2Client: func(context.Context, *maykonfluxcidevv1alpha1.StaticHost) (hostEC2Client, error) {
-				return &mockEC2Client{
-					describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
-						return internalec2.InstanceDetails{State: types.InstanceStateNameTerminated}, nil
-					},
-				}, nil
-			},
+		reconciler := NewStaticHostReconciler(cl, scheme)
+		reconciler.newEC2Client = func(context.Context, *maykonfluxcidevv1alpha1.StaticHost) (hostEC2Client, error) {
+			return &mockEC2Client{
+				describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
+					return internalec2.InstanceDetails{State: types.InstanceStateNameTerminated}, nil
+				},
+			}, nil
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
@@ -140,7 +161,7 @@ var _ = Describe("StaticHost Controller", func() {
 		})
 		scheme := newTestScheme()
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
-		reconciler := &StaticHostReconciler{Client: cl, Scheme: scheme, hostStateHelper: newHostStateHelper(cl)}
+		reconciler := NewStaticHostReconciler(cl, scheme)
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
 		Expect(err).ShouldNot(HaveOccurred())

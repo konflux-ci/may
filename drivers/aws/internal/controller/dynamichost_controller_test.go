@@ -63,17 +63,13 @@ var _ = Describe("DynamicHost Controller", func() {
 
 		scheme := newTestScheme()
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
-		reconciler := &DynamicHostReconciler{
-			Client:          cl,
-			Scheme:          scheme,
-			hostStateHelper: newHostStateHelper(cl),
-			newEC2Client: func(context.Context, *maykonfluxcidevv1alpha1.DynamicHost) (hostEC2Client, error) {
-				return &mockEC2Client{
-					sshReady: func(context.Context, string, bool) (string, bool, error) {
-						return "203.0.113.11", true, nil
-					},
-				}, nil
-			},
+		reconciler := NewDynamicHostReconciler(cl, scheme)
+		reconciler.newEC2Client = func(context.Context, *maykonfluxcidevv1alpha1.DynamicHost) (hostEC2Client, error) {
+			return &mockEC2Client{
+				sshReady: func(context.Context, string, bool) (string, bool, error) {
+					return "203.0.113.11", true, nil
+				},
+			}, nil
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
@@ -115,13 +111,9 @@ var _ = Describe("DynamicHost Controller", func() {
 
 		scheme := newTestScheme()
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
-		reconciler := &DynamicHostReconciler{
-			Client:          cl,
-			Scheme:          scheme,
-			hostStateHelper: newHostStateHelper(cl),
-			newEC2Client: func(context.Context, *maykonfluxcidevv1alpha1.DynamicHost) (hostEC2Client, error) {
-				return nil, fmt.Errorf("EC2 client should not be built")
-			},
+		reconciler := NewDynamicHostReconciler(cl, scheme)
+		reconciler.newEC2Client = func(context.Context, *maykonfluxcidevv1alpha1.DynamicHost) (hostEC2Client, error) {
+			return nil, fmt.Errorf("EC2 client should not be built")
 		}
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})

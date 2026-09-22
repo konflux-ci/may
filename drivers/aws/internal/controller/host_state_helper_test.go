@@ -345,11 +345,13 @@ var _ = Describe("HostStateHelper", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		result, err := reconciler.EnsureInstanceStillRunning(ctx, mockEC2, host, true)
+		result, nextState, err := reconciler.EnsureInstanceStillRunning(ctx, mockEC2, host, true)
 		Expect(err).Should(MatchError(And(
 			ContainSubstring("stopped"),
 			ContainSubstring("not running"),
 		)))
+		Expect(nextState).ShouldNot(BeNil())
+		Expect(*nextState).Should(Equal(maykonfluxcidevv1alpha1.HostActualStateDraining))
 		Expect(result.RequeueAfter).Should(BeZero())
 	})
 
@@ -368,8 +370,9 @@ var _ = Describe("HostStateHelper", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		result, err := reconciler.EnsureInstanceStillRunning(ctx, mockEC2, host, false)
+		result, nextState, err := reconciler.EnsureInstanceStillRunning(ctx, mockEC2, host, false)
 		Expect(err).ShouldNot(HaveOccurred())
+		Expect(nextState).Should(BeNil())
 		Expect(result.RequeueAfter).Should(Equal(instanceHealthInterval))
 	})
 
@@ -608,5 +611,66 @@ var _ = Describe("HostStateHelper", func() {
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(nextState).Should(BeNil())
 		Expect(result.RequeueAfter).Should(Equal(instanceHealthInterval))
+	})
+
+	It("returns Draining when a Ready host's instance is gone", func(ctx context.Context) {
+		host := newTestStaticHost("ready-dead", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID: "i-dead001",
+			}
+		})
+		mockEC2 := &mockEC2Client{
+			describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
+				return internalec2.InstanceDetails{State: types.InstanceStateNameTerminated}, nil
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		result, nextState, err := reconciler.EnsureReady(
+			ctx,
+			host,
+			maykonfluxcidevv1alpha1.HostActualStateReady,
+			func(context.Context) (hostEC2Client, error) {
+				return mockEC2, nil
+			},
+			func(context.Context) (internalconfig.AWSConfiguration, error) {
+				return internalconfig.AWSConfiguration{}, fmt.Errorf("config should not be parsed")
+			},
+		)
+		Expect(err).Should(MatchError(ContainSubstring("terminated")))
+		Expect(nextState).ShouldNot(BeNil())
+		Expect(*nextState).Should(Equal(maykonfluxcidevv1alpha1.HostActualStateDraining))
+		Expect(result.RequeueAfter).Should(BeZero())
+	})
+
+	It("does not drain a Ready host when DescribeInstance fails", func(ctx context.Context) {
+		host := newTestStaticHost("ready-describe-err", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID: "i-flaky001",
+			}
+		})
+		describeErr := errors.New("throttling")
+		mockEC2 := &mockEC2Client{
+			describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
+				return internalec2.InstanceDetails{}, describeErr
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		_, nextState, err := reconciler.EnsureReady(
+			ctx,
+			host,
+			maykonfluxcidevv1alpha1.HostActualStateReady,
+			func(context.Context) (hostEC2Client, error) {
+				return mockEC2, nil
+			},
+			func(context.Context) (internalconfig.AWSConfiguration, error) {
+				return internalconfig.AWSConfiguration{}, nil
+			},
+		)
+		Expect(err).Should(MatchError(describeErr))
+		Expect(nextState).Should(BeNil())
 	})
 })

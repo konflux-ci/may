@@ -42,6 +42,15 @@ type DynamicHostReconciler struct {
 	newEC2Client    func(ctx context.Context, host *maykonfluxcidevv1alpha1.DynamicHost) (hostEC2Client, error)
 }
 
+// NewDynamicHostReconciler constructs a DynamicHost reconciler with a shared host helper.
+func NewDynamicHostReconciler(cl client.Client, scheme *runtime.Scheme) *DynamicHostReconciler {
+	return &DynamicHostReconciler{
+		Client:          cl,
+		Scheme:          scheme,
+		hostStateHelper: HostStateHelper{Client: cl},
+	}
+}
+
 // +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=dynamichosts,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=dynamichosts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=dynamichosts/finalizers,verbs=update
@@ -85,16 +94,13 @@ func (r *DynamicHostReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				return internalconfig.GetDynamicAWSConfiguration(ctx, host)
 			},
 		)
-		if err != nil {
-			return result, err
-		}
 		if actualState != nil {
 			host.Status.State = actualState
-			if err := r.Status().Update(ctx, host); err != nil {
-				return ctrl.Result{}, err
+			if updateErr := r.Status().Update(ctx, host); updateErr != nil {
+				return ctrl.Result{}, updateErr
 			}
 		}
-		return result, nil
+		return result, err
 	default:
 		logf.FromContext(ctx).Info("requested status not implemented", "requestedStatus", host.Spec.Status)
 		return ctrl.Result{}, nil
@@ -114,8 +120,6 @@ func (r *DynamicHostReconciler) buildEC2Client(ctx context.Context, host *maykon
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *DynamicHostReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.hostStateHelper = HostStateHelper{Client: r.Client}
-
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&maykonfluxcidevv1alpha1.DynamicHost{}, builder.WithPredicates(predicate.NewPredicateFuncs(isAWSDriverHost))).
 		Named("dynamichost-aws").

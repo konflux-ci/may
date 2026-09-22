@@ -42,6 +42,15 @@ type StaticHostReconciler struct {
 	newEC2Client    func(ctx context.Context, host *maykonfluxcidevv1alpha1.StaticHost) (hostEC2Client, error)
 }
 
+// NewStaticHostReconciler constructs a StaticHost reconciler with a shared host helper.
+func NewStaticHostReconciler(cl client.Client, scheme *runtime.Scheme) *StaticHostReconciler {
+	return &StaticHostReconciler{
+		Client:          cl,
+		Scheme:          scheme,
+		hostStateHelper: HostStateHelper{Client: cl},
+	}
+}
+
 // +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts/finalizers,verbs=update
@@ -85,16 +94,13 @@ func (r *StaticHostReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				return internalconfig.GetStaticAWSConfiguration(ctx, host)
 			},
 		)
-		if err != nil {
-			return result, err
-		}
 		if actualState != nil {
 			host.Status.State = actualState
-			if err := r.Status().Update(ctx, host); err != nil {
-				return ctrl.Result{}, err
+			if updateErr := r.Status().Update(ctx, host); updateErr != nil {
+				return ctrl.Result{}, updateErr
 			}
 		}
-		return result, nil
+		return result, err
 	default:
 		logf.FromContext(ctx).Info("requested status not implemented", "requestedStatus", host.Spec.Status)
 		return ctrl.Result{}, nil
@@ -114,8 +120,6 @@ func (r *StaticHostReconciler) buildEC2Client(ctx context.Context, host *maykonf
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *StaticHostReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.hostStateHelper = HostStateHelper{Client: r.Client}
-
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&maykonfluxcidevv1alpha1.StaticHost{}, builder.WithPredicates(predicate.NewPredicateFuncs(isAWSDriverHost))).
 		Named("statichost-aws").
