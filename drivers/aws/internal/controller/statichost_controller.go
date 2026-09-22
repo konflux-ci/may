@@ -32,9 +32,9 @@ type StaticHostReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=may.konflux-ci.dev.konflux-ci.dev,resources=statichosts,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=may.konflux-ci.dev.konflux-ci.dev,resources=statichosts/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=may.konflux-ci.dev.konflux-ci.dev,resources=statichosts/finalizers,verbs=update
+// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
