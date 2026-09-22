@@ -70,7 +70,7 @@ var _ = Describe("StaticHost Controller", func() {
 			h.Spec.Status = maykonfluxcidevv1alpha1.HostStatusReady
 			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-static001",
+				internalconfig.AnnotationInstanceId: "i-static001",
 			}
 		})
 		scheme := newTestScheme()
@@ -99,7 +99,7 @@ var _ = Describe("StaticHost Controller", func() {
 			h.Spec.Status = maykonfluxcidevv1alpha1.HostStatusReady
 			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStateReady)
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-dead-static",
+				internalconfig.AnnotationInstanceId: "i-dead-static",
 			}
 		})
 		scheme := newTestScheme()
@@ -128,7 +128,7 @@ var _ = Describe("StaticHost Controller", func() {
 			h.Finalizers = []string{AWSDriverFinalizer}
 			h.DeletionTimestamp = &now
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-gone001",
+				internalconfig.AnnotationInstanceId: "i-gone001",
 			}
 		})
 		scheme := newTestScheme()

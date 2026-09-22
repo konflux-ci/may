@@ -24,6 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsec2 "github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/smithy-go"
 	internalconfig "github.com/konflux-ci/may/drivers/aws/internal/config"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -350,10 +351,28 @@ var _ = Describe("DescribeInstance", func() {
 		})
 
 		_, err := client.DescribeInstance(ctx, "i-missing", false)
+		Expect(IsInstanceNotFoundError(err)).Should(BeTrue())
 		Expect(err).Should(MatchError(And(
 			ContainSubstring("DescribeInstances"),
 			ContainSubstring(`instance "i-missing" not found`),
 		)))
+	})
+
+	It("maps InvalidInstanceID.NotFound to InstanceNotFoundError", func(ctx context.Context) {
+		instanceID := "i-purged"
+		apiErr := &smithy.GenericAPIError{
+			Code:    "InvalidInstanceID.NotFound",
+			Message: "The instance ID 'i-purged' does not exist",
+		}
+		client := newMockClient(&mockEC2API{
+			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
+				return nil, apiErr
+			},
+		})
+
+		_, err := client.DescribeInstance(ctx, instanceID, false)
+		Expect(IsInstanceNotFoundError(err)).Should(BeTrue())
+		Expect(err).Should(MatchError(apiErr))
 	})
 
 	It("returns empty state when the instance state is missing", func(ctx context.Context) {

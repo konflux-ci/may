@@ -93,7 +93,7 @@ func (h *HostStateHelper) EnsureInstanceReady(
 ) (ctrl.Result, *maykonfluxcidevv1alpha1.HostActualState, error) {
 	log := logf.FromContext(ctx)
 
-	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceID]
+	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceId]
 	if instanceID == "" {
 		cfg, err := awsConfig(ctx)
 		if err != nil {
@@ -124,7 +124,7 @@ func (h *HostStateHelper) EnsureInstanceReady(
 			log.Info("waiting for SSH on address", "instanceID", instanceID, "error", err)
 			return ctrl.Result{RequeueAfter: instancePollInterval}, nil, nil
 		}
-		if internalec2.IsInstanceNotRunningError(err) {
+		if internalec2.IsInstanceNotRunningError(err) || internalec2.IsInstanceNotFoundError(err) {
 			return instanceLost(err)
 		}
 		return ctrl.Result{}, nil, err
@@ -151,13 +151,16 @@ func (h *HostStateHelper) EnsureInstanceReady(
 // that transition even while returning the error. There is no Failed actual state;
 // Pending would relaunch and leak, so drain lets the provisioner stop using the host.
 func (h *HostStateHelper) EnsureInstanceStillRunning(ctx context.Context, ec2 hostEC2Client, host client.Object, strictPublicAddress bool) (ctrl.Result, *maykonfluxcidevv1alpha1.HostActualState, error) {
-	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceID]
+	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceId]
 	if instanceID == "" {
-		return instanceLost(fmt.Errorf("host is ready but annotation %q is missing", internalconfig.AnnotationInstanceID))
+		return instanceLost(fmt.Errorf("host is ready but annotation %q is missing", internalconfig.AnnotationInstanceId))
 	}
 
 	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID, strictPublicAddress)
 	if err != nil {
+		if internalec2.IsInstanceNotFoundError(err) {
+			return instanceLost(err)
+		}
 		return ctrl.Result{}, nil, err
 	}
 
@@ -176,7 +179,7 @@ func instanceLost(err error) (ctrl.Result, *maykonfluxcidevv1alpha1.HostActualSt
 // EnsureInstanceTerminated drives EC2 termination during host deletion.
 // The returned bool is true when the controller may remove its finalizer.
 func (h *HostStateHelper) EnsureInstanceTerminated(ctx context.Context, ec2 hostEC2Client, host client.Object) (ctrl.Result, bool, error) {
-	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceID]
+	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceId]
 	if instanceID == "" {
 		return ctrl.Result{}, true, nil
 	}
@@ -188,6 +191,9 @@ func (h *HostStateHelper) EnsureInstanceTerminated(ctx context.Context, ec2 host
 	// strict-public-address value cannot block termination.
 	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID, false)
 	if err != nil {
+		if internalec2.IsInstanceNotFoundError(err) {
+			return ctrl.Result{}, true, nil
+		}
 		return ctrl.Result{}, false, err
 	}
 
@@ -218,7 +224,7 @@ func (h *HostStateHelper) Finalize(ctx context.Context, host client.Object, newE
 		return ctrl.Result{}, nil
 	}
 
-	if host.GetAnnotations()[internalconfig.AnnotationInstanceID] == "" {
+	if host.GetAnnotations()[internalconfig.AnnotationInstanceId] == "" {
 		return ctrl.Result{}, h.RemoveFinalizer(ctx, host)
 	}
 
@@ -246,7 +252,7 @@ func (h *HostStateHelper) RemoveFinalizer(ctx context.Context, host client.Objec
 // SetInstanceMetadata patches the instance ID and SSH address onto the host.
 func (h *HostStateHelper) SetInstanceMetadata(ctx context.Context, host client.Object, instanceID, address string) error {
 	return h.patchAnnotations(ctx, host, map[string]string{
-		internalconfig.AnnotationInstanceID: instanceID,
+		internalconfig.AnnotationInstanceId: instanceID,
 		internalconfig.AnnotationSSHAddress: address,
 	})
 }
@@ -254,7 +260,7 @@ func (h *HostStateHelper) SetInstanceMetadata(ctx context.Context, host client.O
 // SetInstanceID patches the instance ID onto the host.
 func (h *HostStateHelper) SetInstanceID(ctx context.Context, host client.Object, instanceID string) error {
 	return h.patchAnnotations(ctx, host, map[string]string{
-		internalconfig.AnnotationInstanceID: instanceID,
+		internalconfig.AnnotationInstanceId: instanceID,
 	})
 }
 

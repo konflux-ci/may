@@ -25,6 +25,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsec2 "github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/smithy-go"
 
 	internalconfig "github.com/konflux-ci/may/drivers/aws/internal/config"
 )
@@ -71,11 +72,15 @@ type InstanceDetails struct {
 }
 
 // DescribeInstance returns driver-relevant details for instanceID.
+// Missing instances (empty describe result or InvalidInstanceID.NotFound) return InstanceNotFoundError.
 func (c *Client) DescribeInstance(ctx context.Context, instanceID string, strictPublicAddress bool) (InstanceDetails, error) {
 	out, err := c.api.DescribeInstances(ctx, &awsec2.DescribeInstancesInput{
 		InstanceIds: []string{instanceID},
 	})
 	if err != nil {
+		if isInvalidInstanceIDNotFound(err) {
+			return InstanceDetails{}, &InstanceNotFoundError{InstanceID: instanceID, Err: err}
+		}
 		return InstanceDetails{}, fmt.Errorf("DescribeInstances: %w", err)
 	}
 
@@ -94,7 +99,41 @@ func (c *Client) DescribeInstance(ctx context.Context, instanceID string, strict
 		}
 	}
 
-	return InstanceDetails{}, fmt.Errorf("DescribeInstances: instance %q not found", instanceID)
+	return InstanceDetails{}, &InstanceNotFoundError{InstanceID: instanceID}
+}
+
+const invalidInstanceIDNotFound = "InvalidInstanceID.NotFound"
+
+func isInvalidInstanceIDNotFound(err error) bool {
+	var apiErr smithy.APIError
+	return errors.As(err, &apiErr) && apiErr.ErrorCode() == invalidInstanceIDNotFound
+}
+
+// InstanceNotFoundError is returned when DescribeInstances cannot find the instance,
+// including after AWS has purged a terminated record.
+type InstanceNotFoundError struct {
+	InstanceID string
+	Err        error
+}
+
+func (e *InstanceNotFoundError) Error() string {
+	if e == nil {
+		return "EC2 instance not found"
+	}
+	return fmt.Sprintf("DescribeInstances: instance %q not found", e.InstanceID)
+}
+
+func (e *InstanceNotFoundError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+// IsInstanceNotFoundError reports whether err is or wraps an InstanceNotFoundError.
+func IsInstanceNotFoundError(err error) bool {
+	var notFound *InstanceNotFoundError
+	return errors.As(err, &notFound)
 }
 
 // InstanceNotRunningError is returned when an instance will not become SSH-ready

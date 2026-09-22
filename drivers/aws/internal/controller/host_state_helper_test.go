@@ -153,7 +153,7 @@ var _ = Describe("HostStateHelper", func() {
 
 		updated := &maykonfluxcidevv1alpha1.StaticHost{}
 		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
-		Expect(updated.Annotations[internalconfig.AnnotationInstanceID]).Should(Equal("i-launch001"))
+		Expect(updated.Annotations[internalconfig.AnnotationInstanceId]).Should(Equal("i-launch001"))
 		Expect(gotClientToken).Should(Equal("host-uid-1"))
 	})
 
@@ -161,7 +161,7 @@ var _ = Describe("HostStateHelper", func() {
 		host := newTestStaticHost("wait-ssh", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-wait001",
+				internalconfig.AnnotationInstanceId: "i-wait001",
 			}
 		})
 
@@ -184,7 +184,7 @@ var _ = Describe("HostStateHelper", func() {
 		host := newTestStaticHost("host-ready", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-ready001",
+				internalconfig.AnnotationInstanceId: "i-ready001",
 			}
 		})
 
@@ -214,7 +214,7 @@ var _ = Describe("HostStateHelper", func() {
 		host := newTestStaticHost("wait-ssh-probe", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-probe001",
+				internalconfig.AnnotationInstanceId: "i-probe001",
 			}
 		})
 
@@ -240,7 +240,7 @@ var _ = Describe("HostStateHelper", func() {
 		host := newTestStaticHost("ssh-terminated", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-term-ready",
+				internalconfig.AnnotationInstanceId: "i-term-ready",
 			}
 		})
 
@@ -268,7 +268,7 @@ var _ = Describe("HostStateHelper", func() {
 		host := newTestStaticHost("ssh-describe-err", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-describe-err",
+				internalconfig.AnnotationInstanceId: "i-describe-err",
 			}
 		})
 
@@ -336,7 +336,7 @@ var _ = Describe("HostStateHelper", func() {
 		host := newTestStaticHost("strict-ssh", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID:          "i-strict001",
+				internalconfig.AnnotationInstanceId:          "i-strict001",
 				internalconfig.AnnotationStrictPublicAddress: "true",
 			}
 		})
@@ -361,7 +361,7 @@ var _ = Describe("HostStateHelper", func() {
 	It("errors when a Ready host's instance is stopped", func(ctx context.Context) {
 		host := newTestStaticHost("not-running", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-stop001",
+				internalconfig.AnnotationInstanceId: "i-stop001",
 			}
 		})
 
@@ -387,7 +387,7 @@ var _ = Describe("HostStateHelper", func() {
 	It("reports unknown when a Ready host's instance state is empty", func(ctx context.Context) {
 		host := newTestStaticHost("empty-state", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-empty001",
+				internalconfig.AnnotationInstanceId: "i-empty001",
 			}
 		})
 		mockEC2 := &mockEC2Client{
@@ -410,7 +410,7 @@ var _ = Describe("HostStateHelper", func() {
 	It("requeues a running Ready host to catch later EC2 state changes", func(ctx context.Context) {
 		host := newTestStaticHost("still-running", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-run001",
+				internalconfig.AnnotationInstanceId: "i-run001",
 			}
 		})
 
@@ -432,7 +432,7 @@ var _ = Describe("HostStateHelper", func() {
 		host := newTestStaticHost("ssh-canceled", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-cancel001",
+				internalconfig.AnnotationInstanceId: "i-cancel001",
 			}
 		})
 
@@ -456,7 +456,7 @@ var _ = Describe("HostStateHelper", func() {
 	It("terminates the instance during deletion", func(ctx context.Context) {
 		host := newTestStaticHost("finalize-terminate", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-term001",
+				internalconfig.AnnotationInstanceId: "i-term001",
 			}
 		})
 
@@ -484,7 +484,7 @@ var _ = Describe("HostStateHelper", func() {
 	It("reports termination complete when the instance is terminated", func(ctx context.Context) {
 		host := newTestStaticHost("finalize-done", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-gone001",
+				internalconfig.AnnotationInstanceId: "i-gone001",
 			}
 		})
 
@@ -502,10 +502,30 @@ var _ = Describe("HostStateHelper", func() {
 		Expect(result.RequeueAfter).Should(BeZero())
 	})
 
+	It("reports termination complete when the instance is not found", func(ctx context.Context) {
+		host := newTestStaticHost("finalize-missing", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceId: "i-purged001",
+			}
+		})
+		mockEC2 := &mockEC2Client{
+			describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
+				return internalec2.InstanceDetails{}, &internalec2.InstanceNotFoundError{InstanceID: "i-purged001"}
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		result, done, err := reconciler.EnsureInstanceTerminated(ctx, mockEC2, host)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(done).Should(BeTrue())
+		Expect(result.RequeueAfter).Should(BeZero())
+	})
+
 	It("terminates even when the strict-public-address annotation is malformed", func(ctx context.Context) {
 		host := newTestStaticHost("finalize-bad-strict", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID:          "i-term002",
+				internalconfig.AnnotationInstanceId:          "i-term002",
 				internalconfig.AnnotationStrictPublicAddress: "maybe",
 			}
 		})
@@ -537,7 +557,7 @@ var _ = Describe("HostStateHelper", func() {
 	It("errors when terminating an instance without an EC2 client", func(ctx context.Context) {
 		host := newTestStaticHost("finalize-nil-ec2", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-term003",
+				internalconfig.AnnotationInstanceId: "i-term003",
 			}
 		})
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
@@ -553,7 +573,7 @@ var _ = Describe("HostStateHelper", func() {
 		host := newTestStaticHost("finalize-wait", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Finalizers = []string{AWSDriverFinalizer, "example.com/other"}
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-wait-fin",
+				internalconfig.AnnotationInstanceId: "i-wait-fin",
 			}
 		})
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
@@ -575,7 +595,7 @@ var _ = Describe("HostStateHelper", func() {
 		host := newTestStaticHost("finalize-foreign", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Finalizers = []string{"example.com/other"}
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-foreign-fin",
+				internalconfig.AnnotationInstanceId: "i-foreign-fin",
 			}
 		})
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
@@ -657,7 +677,7 @@ var _ = Describe("HostStateHelper", func() {
 	It("does not parse full AWS config when checking a Ready instance", func(ctx context.Context) {
 		host := newTestStaticHost("ready-health", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID:          "i-run002",
+				internalconfig.AnnotationInstanceId:          "i-run002",
 				internalconfig.AnnotationStrictPublicAddress: "true",
 			}
 		})
@@ -689,7 +709,7 @@ var _ = Describe("HostStateHelper", func() {
 	It("returns Draining when a Ready host's instance is gone", func(ctx context.Context) {
 		host := newTestStaticHost("ready-dead", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-dead001",
+				internalconfig.AnnotationInstanceId: "i-dead001",
 			}
 		})
 		mockEC2 := &mockEC2Client{
@@ -720,7 +740,7 @@ var _ = Describe("HostStateHelper", func() {
 	It("does not drain a Ready host when DescribeInstance fails", func(ctx context.Context) {
 		host := newTestStaticHost("ready-describe-err", func(h *maykonfluxcidevv1alpha1.StaticHost) {
 			h.Annotations = map[string]string{
-				internalconfig.AnnotationInstanceID: "i-flaky001",
+				internalconfig.AnnotationInstanceId: "i-flaky001",
 			}
 		})
 		describeErr := errors.New("throttling")
@@ -745,5 +765,36 @@ var _ = Describe("HostStateHelper", func() {
 		)
 		Expect(err).Should(MatchError(describeErr))
 		Expect(nextState).Should(BeNil())
+	})
+
+	It("drains a Ready host when the instance is not found", func(ctx context.Context) {
+		host := newTestStaticHost("ready-not-found", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceId: "i-purged002",
+			}
+		})
+		notFound := &internalec2.InstanceNotFoundError{InstanceID: "i-purged002"}
+		mockEC2 := &mockEC2Client{
+			describeInstance: func(context.Context, string, bool) (internalec2.InstanceDetails, error) {
+				return internalec2.InstanceDetails{}, notFound
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		_, nextState, err := reconciler.EnsureReady(
+			ctx,
+			host,
+			maykonfluxcidevv1alpha1.HostActualStateReady,
+			func(context.Context) (hostEC2Client, error) {
+				return mockEC2, nil
+			},
+			func(context.Context) (internalconfig.AWSConfiguration, error) {
+				return internalconfig.AWSConfiguration{}, nil
+			},
+		)
+		Expect(err).Should(MatchError(notFound))
+		Expect(nextState).ShouldNot(BeNil())
+		Expect(*nextState).Should(Equal(maykonfluxcidevv1alpha1.HostActualStateDraining))
 	})
 })

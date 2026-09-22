@@ -44,7 +44,7 @@ var _ = Describe("DynamicHost Controller", func() {
 					DriverLabel: DriverLabelValueAWS,
 				},
 				Annotations: map[string]string{
-					internalconfig.AnnotationInstanceID: "i-dynamic001",
+					internalconfig.AnnotationInstanceId: "i-dynamic001",
 				},
 			},
 			Spec: maykonfluxcidevv1alpha1.DynamicHostSpec{
@@ -92,7 +92,7 @@ var _ = Describe("DynamicHost Controller", func() {
 					DriverLabel: DriverLabelValueAWS,
 				},
 				Annotations: map[string]string{
-					internalconfig.AnnotationInstanceID: "i-dynamic002",
+					internalconfig.AnnotationInstanceId: "i-dynamic002",
 				},
 			},
 			Spec: maykonfluxcidevv1alpha1.DynamicHostSpec{
