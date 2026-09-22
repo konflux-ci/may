@@ -19,6 +19,7 @@ package ec2
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -96,6 +97,31 @@ func (c *Client) DescribeInstance(ctx context.Context, instanceID string, strict
 	return InstanceDetails{}, fmt.Errorf("DescribeInstances: instance %q not found", instanceID)
 }
 
+// InstanceNotRunningError is returned when an instance will not become SSH-ready
+// (stopped, terminated, and similar).
+type InstanceNotRunningError struct {
+	InstanceID string
+	State      types.InstanceStateName
+}
+
+func (e *InstanceNotRunningError) Error() string {
+	if e == nil {
+		return "EC2 instance is not running"
+	}
+	switch e.State {
+	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated:
+		return fmt.Sprintf("EC2 instance %s is %s", e.InstanceID, e.State)
+	default:
+		return fmt.Sprintf("EC2 instance %s is %s and is not running", e.InstanceID, e.State)
+	}
+}
+
+// IsInstanceNotRunningError reports whether err is or wraps an InstanceNotRunningError.
+func IsInstanceNotRunningError(err error) bool {
+	var notRunning *InstanceNotRunningError
+	return errors.As(err, &notRunning)
+}
+
 func instanceSSHAddress(instance types.Instance, strictPublicAddress bool) string {
 	if instance.PublicDnsName != nil && *instance.PublicDnsName != "" {
 		return *instance.PublicDnsName
@@ -124,10 +150,8 @@ func (c *Client) SSHReady(ctx context.Context, instanceID string, strictPublicAd
 	}
 
 	switch details.State {
-	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated:
-		return "", false, fmt.Errorf("EC2 instance %s is %s", instanceID, details.State)
-	case types.InstanceStateNameStopping, types.InstanceStateNameStopped:
-		return "", false, fmt.Errorf("EC2 instance %s is %s and is not running", instanceID, details.State)
+	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated, types.InstanceStateNameStopping, types.InstanceStateNameStopped:
+		return "", false, &InstanceNotRunningError{InstanceID: instanceID, State: details.State}
 	case types.InstanceStateNameRunning:
 		return c.sshReadyRunning(ctx, details)
 	default:

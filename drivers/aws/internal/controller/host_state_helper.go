@@ -84,6 +84,7 @@ func (h *HostStateHelper) EnsureReady(
 
 // EnsureInstanceReady launches an instance if needed and waits until SSH is reachable.
 // When SSH is reachable it returns HostActualStateReady for the caller to persist.
+// When the instance is gone it returns HostActualStateDraining, matching EnsureInstanceStillRunning.
 func (h *HostStateHelper) EnsureInstanceReady(
 	ctx context.Context,
 	ec2 hostEC2Client,
@@ -123,6 +124,9 @@ func (h *HostStateHelper) EnsureInstanceReady(
 			log.Info("waiting for SSH on address", "instanceID", instanceID, "error", err)
 			return ctrl.Result{RequeueAfter: instancePollInterval}, nil, nil
 		}
+		if internalec2.IsInstanceNotRunningError(err) {
+			return instanceLost(err)
+		}
 		return ctrl.Result{}, nil, err
 	}
 	if !ready {
@@ -149,7 +153,7 @@ func (h *HostStateHelper) EnsureInstanceReady(
 func (h *HostStateHelper) EnsureInstanceStillRunning(ctx context.Context, ec2 hostEC2Client, host client.Object, strictPublicAddress bool) (ctrl.Result, *maykonfluxcidevv1alpha1.HostActualState, error) {
 	instanceID := host.GetAnnotations()[internalconfig.AnnotationInstanceID]
 	if instanceID == "" {
-		return ctrl.Result{}, ptr.To(maykonfluxcidevv1alpha1.HostActualStateDraining), fmt.Errorf("host is Ready but annotation %q is missing", internalconfig.AnnotationInstanceID)
+		return instanceLost(fmt.Errorf("host is ready but annotation %q is missing", internalconfig.AnnotationInstanceID))
 	}
 
 	instanceDetails, err := ec2.DescribeInstance(ctx, instanceID, strictPublicAddress)
@@ -161,8 +165,12 @@ func (h *HostStateHelper) EnsureInstanceStillRunning(ctx context.Context, ec2 ho
 	case types.InstanceStateNameRunning:
 		return ctrl.Result{RequeueAfter: instanceHealthInterval}, nil, nil
 	default:
-		return ctrl.Result{}, ptr.To(maykonfluxcidevv1alpha1.HostActualStateDraining), fmt.Errorf("EC2 instance %s is %s and is not running", instanceID, instanceDetails.State)
+		return instanceLost(fmt.Errorf("EC2 instance %s is %s and is not running", instanceID, instanceDetails.State))
 	}
+}
+
+func instanceLost(err error) (ctrl.Result, *maykonfluxcidevv1alpha1.HostActualState, error) {
+	return ctrl.Result{}, ptr.To(maykonfluxcidevv1alpha1.HostActualStateDraining), err
 }
 
 // EnsureInstanceTerminated drives EC2 termination during host deletion.

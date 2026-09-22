@@ -465,6 +465,7 @@ var _ = Describe("SSHReady", func() {
 		})
 
 		_, ready, err := client.SSHReady(ctx, instanceID, false)
+		Expect(IsInstanceNotRunningError(err)).Should(BeTrue())
 		Expect(err).Should(MatchError(ContainSubstring("terminated")))
 		Expect(ready).Should(BeFalse())
 	})
@@ -479,6 +480,7 @@ var _ = Describe("SSHReady", func() {
 		})
 
 		gotAddress, ready, err := client.SSHReady(ctx, instanceID, false)
+		Expect(IsInstanceNotRunningError(err)).Should(BeTrue())
 		Expect(err).Should(MatchError(ContainSubstring("shutting-down")))
 		Expect(ready).Should(BeFalse())
 		Expect(gotAddress).Should(BeZero())
@@ -494,6 +496,7 @@ var _ = Describe("SSHReady", func() {
 		})
 
 		gotAddress, ready, err := client.SSHReady(ctx, instanceID, false)
+		Expect(IsInstanceNotRunningError(err)).Should(BeTrue())
 		Expect(err).Should(MatchError(And(
 			ContainSubstring("stopped"),
 			ContainSubstring("not running"),
@@ -511,6 +514,7 @@ var _ = Describe("SSHReady", func() {
 		})
 
 		_, ready, err := client.SSHReady(ctx, instanceID, false)
+		Expect(IsInstanceNotRunningError(err)).Should(BeTrue())
 		Expect(err).Should(MatchError(And(
 			ContainSubstring("stopping"),
 			ContainSubstring("not running"),
@@ -528,6 +532,7 @@ var _ = Describe("SSHReady", func() {
 		})
 
 		_, ready, err := client.SSHReady(ctx, instanceID, false)
+		Expect(IsInstanceNotRunningError(err)).Should(BeFalse())
 		Expect(err).Should(And(
 			MatchError(expectedErr),
 			MatchError(ContainSubstring("DescribeInstances")),

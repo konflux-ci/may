@@ -48,9 +48,11 @@ dynamic (one-time instances).
   DynamicHost `spec.status` stays `Ready` during end-of-life; the provisioner
   owns drain and GC deletes the host once it is `Drained`. Resetting to
   `Pending` would loop and leak the EC2 instance.
-- If a Ready host's instance is not running, the driver sets `status.State` to
-  `Draining` (there is no Failed state) so the provisioner stops scheduling on
-  it. Describe/API errors leave the host Ready and retry.
+- If a host's instance is not running (Ready health-check or Pending SSH wait),
+  the driver sets `status.State` to `Draining` (there is no Failed state) so
+  the provisioner stops scheduling on it. Probe waits and Describe/API errors
+  leave the host unchanged and retry. Clearing the instance-id to relaunch
+  would leak for DynamicHost.
 
 ## Driver-managed annotations
 

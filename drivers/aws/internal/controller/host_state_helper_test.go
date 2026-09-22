@@ -244,7 +244,10 @@ var _ = Describe("HostStateHelper", func() {
 			}
 		})
 
-		expectedErr := errors.New("EC2 instance i-term-ready is terminated")
+		expectedErr := &internalec2.InstanceNotRunningError{
+			InstanceID: "i-term-ready",
+			State:      types.InstanceStateNameTerminated,
+		}
 		mockEC2 := &mockEC2Client{
 			sshReady: func(context.Context, string, bool) (string, bool, error) {
 				return "", false, expectedErr
@@ -253,10 +256,36 @@ var _ = Describe("HostStateHelper", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := newHostStateHelper(cl)
 
-		_, _, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+		_, actualState, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
 			return internalconfig.AWSConfiguration{}, nil
 		})
 		Expect(err).Should(MatchError(expectedErr))
+		Expect(actualState).ShouldNot(BeNil())
+		Expect(*actualState).Should(Equal(maykonfluxcidevv1alpha1.HostActualStateDraining))
+	})
+
+	It("does not drain a Pending host when SSHReady returns a describe error", func(ctx context.Context) {
+		host := newTestStaticHost("ssh-describe-err", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStatePending)
+			h.Annotations = map[string]string{
+				internalconfig.AnnotationInstanceID: "i-describe-err",
+			}
+		})
+
+		expectedErr := errors.New("DescribeInstances: throttling")
+		mockEC2 := &mockEC2Client{
+			sshReady: func(context.Context, string, bool) (string, bool, error) {
+				return "", false, expectedErr
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := newHostStateHelper(cl)
+
+		_, actualState, err := reconciler.EnsureInstanceReady(ctx, mockEC2, host, func(context.Context) (internalconfig.AWSConfiguration, error) {
+			return internalconfig.AWSConfiguration{}, nil
+		})
+		Expect(err).Should(MatchError(expectedErr))
+		Expect(actualState).Should(BeNil())
 	})
 
 	It("returns an AWS configuration error", func(ctx context.Context) {
