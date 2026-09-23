@@ -8,7 +8,7 @@
 **/*.yaml
 **/*.txt
 **/bin/
-# Kubebuilder manifests only — do not use **/config/ (that hides Go packages such as internal/config).
+# Kubebuilder manifests; narrowed from **/config/ to avoid hiding Go packages
 may/config/
 drivers/*/config/
 **/*.md
