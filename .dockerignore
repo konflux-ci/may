@@ -8,7 +8,9 @@
 **/*.yaml
 **/*.txt
 **/bin/
-**/config/
+# Kubebuilder manifests; narrowed from **/config/ to avoid hiding Go packages
+may/config/
+drivers/*/config/
 **/*.md
 **/Makefile
 **/PROJECT
