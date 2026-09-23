@@ -2,9 +2,9 @@
 
 MAY AWS Driver manages AWS Instances for MAY.
 
-The driver performs all kind of operations with EC2 instances in Amazon cloud via
+The driver performs all kinds of operations with EC2 instances in Amazon cloud via
 `internal/ec2/` (launch, describe, SSH readiness probing, and terminate). It
-should support two modes of operations - static (long-running instances) and
+should support two modes of operations — static (long-running instances) and
 dynamic (one-time instances).
 
 ## Commands
@@ -20,9 +20,9 @@ dynamic (one-time instances).
 ## Project Layout
 
 - `config/` — manifests
-- `internal/controller/` — controllers
-- `internal/config/` — internal configuration structs and parsers
 - `internal/client/` — EC2 client constructors (OpenShift SA web-identity auth)
+- `internal/config/` — internal configuration structs and parsers
+- `internal/controller/` — controllers
 - `internal/ec2/` — EC2 instance lifecycle operations (launch, describe, SSH probe, terminate); wraps authenticated SDK clients from `internal/client/`
 
 ## Key Conventions
@@ -34,10 +34,37 @@ dynamic (one-time instances).
 ## Gotchas
 
 - `Host` type is defined in `../../may`.
+- Only hosts labeled `may.konflux-ci.dev/driver: aws` are reconciled.
 - Host CR annotations (`instance-profile`, `security-group`, `security-group-id`,
   etc.) are authorization boundaries: only principals with Host CR write access
   can set them. Scope the controller IAM role's `iam:PassRole` to permitted
   instance profiles and EC2/VPC permissions to permitted security groups.
+- The AWS driver must be the last finalizer on a host. Other controllers
+  (provisioner, runners) may still need the instance to drain or unregister.
+  Finalize waits until only `drivers.may.konflux-ci.dev/aws` remains, then
+  terminates the instance. If that finalizer is already gone, Finalize does
+  not terminate. If DescribeInstances reports the instance missing (purged
+  terminated record), Finalize treats it as already gone and drops the
+  finalizer. Reconcile resumes when those other finalizers are
+  removed (watch), not on a timer.
+- The driver does not change `status.State` while it is `Draining` or `Drained`.
+  DynamicHost `spec.status` stays `Ready` during end-of-life; the provisioner
+  owns drain and GC deletes the host once it is `Drained`. Resetting to
+  `Pending` would loop and leak the EC2 instance.
+- If a host's instance is not running (Ready health-check or Pending SSH wait),
+  the driver sets `status.State` to `Draining` (there is no Failed state) so
+  the provisioner stops scheduling on it. Probe waits and Describe/API errors
+  leave the host unchanged and retry. Clearing the instance-id to relaunch
+  would leak for DynamicHost.
+
+## Driver-managed annotations
+
+Written by the controller after launch / SSH success:
+
+| Annotation | Purpose |
+|------------|---------|
+| `aws.may.konflux-ci.dev/instance-id` | EC2 instance ID |
+| `aws.may.konflux-ci.dev/ssh-address` | Observed SSH address |
 
 ## AWS authentication (standalone OpenShift)
 
@@ -97,7 +124,7 @@ ServiceAccount name and namespace in the IAM role trust policy.
    | IAM action | Used for |
    |------------|----------|
    | `ec2:RunInstances` | Launch instances |
-   | `ec2:DescribeInstances` | Poll instance state and public IP |
+   | `ec2:DescribeInstances` | Poll instance state and SSH address |
    | `ec2:TerminateInstances` | Dispose instances |
 
    When hosts use instance-profile annotations, the controller role also needs

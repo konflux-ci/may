@@ -28,6 +28,7 @@ var _ = Describe("SSHPortOpen", func() {
 	DescribeTable("returns a wrapped error when the SSH port is unreachable",
 		func(ctx context.Context, host string) {
 			err := SSHPortOpen(ctx, host)
+			Expect(IsSSHProbeError(err)).Should(BeTrue())
 			Expect(err).Should(MatchError(
 				HavePrefix("ssh probe to " + net.JoinHostPort(host, sshPort) + ": "),
 			))
@@ -35,4 +36,10 @@ var _ = Describe("SSHPortOpen", func() {
 		Entry("invalid IP address", "999.999.999.999"),
 		Entry("invalid hostname", "not-a-host"),
 	)
+
+	It("formats a nil wrapped error without panicking", func() {
+		err := &SSHProbeError{Addr: "203.0.113.10:22"}
+		Expect(err.Error()).Should(Equal("ssh probe to 203.0.113.10:22"))
+		Expect((*SSHProbeError)(nil).Error()).Should(Equal("ssh probe: <nil>"))
+	})
 })
