@@ -84,14 +84,14 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 .PHONY: test-e2e-aws
 test-e2e-aws: setup-test-e2e manifests generate fmt vet ## Run the AWS e2e tests. Expected an isolated environment using Kind with AWS credentials.
 	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e_aws ./test/e2e/ -v -ginkgo.v || status=$$?; \
-	$(MAKE) cleanup-test-e2e; \
-	exit $${status:-0}
+	$(MAKE) cleanup-test-e2e || cleanup_status=$$?; \
+	exit $${status:-$${cleanup_status:-0}}
 
 .PHONY: test-e2e-aws-coverage
 test-e2e-aws-coverage: setup-test-e2e manifests generate fmt vet ## Run the AWS e2e tests with coverage. Expected an isolated environment using Kind with AWS credentials.
 	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) ENABLE_COVERAGE=$(ENABLE_COVERAGE) go test -tags=e2e_aws ./test/e2e/ -v -ginkgo.v || status=$$?; \
-	if [ "$(ENABLE_COVERAGE)" != "true" ]; then $(MAKE) cleanup-test-e2e; fi; \
-	exit $${status:-0}
+	if [ "$(ENABLE_COVERAGE)" != "true" ]; then $(MAKE) cleanup-test-e2e || cleanup_status=$$?; fi; \
+	exit $${status:-$${cleanup_status:-0}}
 
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
