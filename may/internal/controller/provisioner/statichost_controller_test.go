@@ -19,6 +19,7 @@ package provisioner
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -466,6 +467,36 @@ var _ = Describe("Host Controller", func() {
 				By("Asserting the host remains in the drained state")
 				Expect(k8sClient.Get(ctx, typeNamespacedName, host)).To(Succeed())
 				Expect(host.Status.State).To(Equal(new(mayprovkonfluxcidevv1alpha1.HostActualStateDrained)))
+			})
+
+			It("should delete any runner that references the static host", func(ctx context.Context) {
+				By("creating a runner")
+				r := &mayprovkonfluxcidevv1alpha1.Runner{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      fmt.Sprintf("%s-1", host.Name),
+						Namespace: host.Namespace,
+						Labels: map[string]string{
+							constants.HostLabel: host.Name,
+						},
+					},
+					Spec: mayprovkonfluxcidevv1alpha1.RunnerSpec{
+						Flavor: host.Spec.Flavor,
+						Resources: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("1"),
+							corev1.ResourceMemory: resource.MustParse("8G"),
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, r)).To(Succeed())
+
+				By("Reconciling the host")
+				Expect(controllerReconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: typeNamespacedName,
+				})).Error().NotTo(HaveOccurred())
+
+				By("Asserting the runner was deleted")
+				runners := fetchRunners(ctx, k8sClient, typeNamespacedName)
+				Expect(runners.Items).To(BeEmpty())
 			})
 		})
 	})

@@ -113,7 +113,7 @@ func (r *StaticHostReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, r.ensureHostIsDraining(ctx, h, rr)
 
 	case maykonfluxcidevv1alpha1.HostActualStateDrained:
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, r.ensureHostIsDrained(ctx, rr)
 
 	default:
 		l.Info("invalid status: skipping reconciliation", "status", *h.Status.State)
@@ -164,6 +164,15 @@ func (r *StaticHostReconciler) ensureHostIsDraining(
 		}
 
 		runnersDeleted.Inc()
+	}
+
+	return errors.Join(errs...)
+}
+
+func (r *StaticHostReconciler) ensureHostIsDrained(ctx context.Context, rr maykonfluxcidevv1alpha1.RunnerList) error {
+	errs := []error{}
+	for _, obj := range rr.Items {
+		errs = append(errs, r.Delete(ctx, &obj))
 	}
 
 	return errors.Join(errs...)
