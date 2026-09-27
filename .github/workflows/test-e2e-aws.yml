@@ -16,7 +16,7 @@ on:
 
 env:
   AWS_ROLE_ARN: ${{ secrets.MAY_CI_ROLE_ARN }}
-  AWS_REGION: us-east-1
+  AWS_REGION: ${{ secrets.MAY_CI_REGION }}
   AWS_ROLE_DURATION: 3600
   ENABLE_COVERAGE: "true"
 
@@ -40,14 +40,19 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Mask AWS identifiers
+        env:
+          ROLE_ARN: ${{ secrets.MAY_CI_ROLE_ARN }}
+          SUBNET_ID: ${{ secrets.MAY_CI_SUBNET_ID }}
+          SECURITY_GROUP_ID: ${{ secrets.MAY_CI_SECURITY_GROUP_ID }}
+          AMI_ID: ${{ secrets.MAY_CI_AMI_ID }}
         run: |
-          echo "::add-mask::${{ secrets.MAY_CI_ROLE_ARN }}"
-          echo "::add-mask::${{ secrets.MAY_CI_SUBNET_ID }}"
-          echo "::add-mask::${{ secrets.MAY_CI_SECURITY_GROUP_ID }}"
-          echo "::add-mask::${{ secrets.MAY_CI_AMI_ID }}"
+          echo "::add-mask::$ROLE_ARN"
+          echo "::add-mask::$SUBNET_ID"
+          echo "::add-mask::$SECURITY_GROUP_ID"
+          echo "::add-mask::$AMI_ID"
           # Extract and mask account ID and role name from ARN
-          ACCOUNT_ID=$(echo "${{ secrets.MAY_CI_ROLE_ARN }}" | cut -d: -f5)
-          ROLE_NAME=$(echo "${{ secrets.MAY_CI_ROLE_ARN }}" | cut -d/ -f2)
+          ACCOUNT_ID=$(echo "$ROLE_ARN" | cut -d: -f5)
+          ROLE_NAME=$(echo "$ROLE_ARN" | cut -d/ -f2)
           echo "::add-mask::$ACCOUNT_ID"
           echo "::add-mask::$ROLE_NAME"
 
@@ -62,12 +67,10 @@ jobs:
         run: |
           IDENTITY=$(aws sts get-caller-identity)
           USER_ID=$(echo "$IDENTITY" | jq -r '.UserId')
-          ACCOUNT=$(echo "$IDENTITY" | jq -r '.Account')
           ROLE_UNIQUE_ID=$(echo "$USER_ID" | cut -d: -f1)
           SESSION_NAME=$(echo "$USER_ID" | cut -d: -f2)
           echo "::add-mask::$ROLE_UNIQUE_ID"
           echo "::add-mask::$SESSION_NAME"
-          echo "Successfully assumed role in account $ACCOUNT"
 
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
