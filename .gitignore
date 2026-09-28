@@ -1,2 +1,8 @@
 go.work
 go.work.sum
+
+# Agent security
+.claude
+.cursor
+.vscode
+.agents
