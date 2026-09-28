@@ -3,8 +3,10 @@ module github.com/konflux-ci/may/drivers/aws
 go 1.26.0
 
 require (
+	github.com/aws/aws-sdk-go-v2 v1.43.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.31
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.317.0
+	github.com/aws/smithy-go v1.27.3
 	github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20260415131407-3607d12111f8
 	github.com/konflux-ci/may v0.0.0-00010101000000-000000000000
 	github.com/onsi/ginkgo/v2 v2.28.1
@@ -18,7 +20,6 @@ require (
 	cel.dev/expr v0.25.1 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.43.0 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.30 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.31 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.31 // indirect
@@ -30,7 +31,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.33.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.38.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.45.0 // indirect
-	github.com/aws/smithy-go v1.27.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
