@@ -72,6 +72,25 @@ var _ = Describe("DynamicHost Controller", func() {
 		Expect(*updated.Status.State).Should(Equal(maykonfluxcidevv1alpha1.HostActualStatePending))
 	})
 
+	It("leaves an initialized host unchanged", func(ctx context.Context) {
+		pending := maykonfluxcidevv1alpha1.HostActualStatePending
+		host := newTestDynamicHost("already-pending", func(h *maykonfluxcidevv1alpha1.DynamicHost) {
+			h.Finalizers = []string{AWSDriverFinalizer}
+			h.Status.State = &pending
+		})
+		scheme := newTestScheme()
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := NewDynamicHostReconciler(cl, scheme)
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
+		Expect(err).ShouldNot(HaveOccurred())
+
+		updated := &maykonfluxcidevv1alpha1.DynamicHost{}
+		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
+		Expect(updated.Status.State).ShouldNot(BeNil())
+		Expect(*updated.Status.State).Should(Equal(maykonfluxcidevv1alpha1.HostActualStatePending))
+	})
+
 	It("removes the finalizer on delete", func(ctx context.Context) {
 		now := metav1.Now()
 		host := newTestDynamicHost("dynamic-delete", func(h *maykonfluxcidevv1alpha1.DynamicHost) {
