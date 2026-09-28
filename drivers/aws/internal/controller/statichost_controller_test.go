@@ -17,16 +17,98 @@ limitations under the License.
 package controller
 
 import (
+	"context"
+
+	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 var _ = Describe("StaticHost Controller", func() {
-	Context("When reconciling a resource", func() {
+	It("ignores a missing host", func(ctx context.Context) {
+		scheme := newTestScheme()
+		cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+		reconciler := NewStaticHostReconciler(cl, scheme)
 
-		It("should successfully reconcile the resource", func() {
-
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: "missing", Namespace: "default"},
 		})
+		Expect(err).ShouldNot(HaveOccurred())
+	})
+
+	It("adds the AWS driver finalizer", func(ctx context.Context) {
+		host := newTestStaticHost("add-finalizer", nil)
+		scheme := newTestScheme()
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := NewStaticHostReconciler(cl, scheme)
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
+		Expect(err).ShouldNot(HaveOccurred())
+
+		updated := &maykonfluxcidevv1alpha1.StaticHost{}
+		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
+		Expect(updated.Finalizers).Should(ContainElement(AWSDriverFinalizer))
+	})
+
+	It("initializes status state to Pending", func(ctx context.Context) {
+		host := newTestStaticHost("init-pending", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Finalizers = []string{AWSDriverFinalizer}
+		})
+		scheme := newTestScheme()
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := NewStaticHostReconciler(cl, scheme)
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
+		Expect(err).ShouldNot(HaveOccurred())
+
+		updated := &maykonfluxcidevv1alpha1.StaticHost{}
+		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
+		Expect(updated.Status.State).ShouldNot(BeNil())
+		Expect(*updated.Status.State).Should(Equal(maykonfluxcidevv1alpha1.HostActualStatePending))
+	})
+
+	It("leaves an initialized host unchanged", func(ctx context.Context) {
+		pending := maykonfluxcidevv1alpha1.HostActualStatePending
+		host := newTestStaticHost("already-pending", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Finalizers = []string{AWSDriverFinalizer}
+			h.Status.State = &pending
+		})
+		scheme := newTestScheme()
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := NewStaticHostReconciler(cl, scheme)
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
+		Expect(err).ShouldNot(HaveOccurred())
+
+		updated := &maykonfluxcidevv1alpha1.StaticHost{}
+		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
+		Expect(updated.Status.State).ShouldNot(BeNil())
+		Expect(*updated.Status.State).Should(Equal(maykonfluxcidevv1alpha1.HostActualStatePending))
+	})
+
+	It("removes the finalizer on delete", func(ctx context.Context) {
+		now := metav1.Now()
+		host := newTestStaticHost("static-delete", func(h *maykonfluxcidevv1alpha1.StaticHost) {
+			h.Finalizers = []string{AWSDriverFinalizer}
+			h.DeletionTimestamp = &now
+		})
+		scheme := newTestScheme()
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := NewStaticHostReconciler(cl, scheme)
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
+		Expect(err).ShouldNot(HaveOccurred())
+
+		updated := &maykonfluxcidevv1alpha1.StaticHost{}
+		err = cl.Get(ctx, client.ObjectKeyFromObject(host), updated)
+		Expect(client.IgnoreNotFound(err)).Should(Succeed())
+		if err == nil {
+			Expect(updated.Finalizers).ShouldNot(ContainElement(AWSDriverFinalizer))
+		}
 	})
 })
