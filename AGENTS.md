@@ -21,7 +21,7 @@ Changes to the following paths require a write-access reviewer to approve them. 
 - `AGENTS.md` (at any level)
 - `CLAUDE.md` (at any level)
 - `GEMINI.md` (at any level)
-- `skills/`
+- `skills/` (at any level)
 - `.github/workflows/agent-files-detect.yaml`
 - `.github/workflows/agent-files-enforce.yaml`
 

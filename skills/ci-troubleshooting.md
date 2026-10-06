@@ -104,7 +104,7 @@ This check has two jobs:
 
 **block-vendor-dirs** — Fails if the repository tree contains any vendor-specific agent directories (`.claude/`, `.cursor/`, `.vscode/`, `.agents/`). To fix, remove the offending directory and use `AGENTS.md` and `skills/` instead.
 
-**detect-protected-changes** — Detects changes to protected agent config files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `skills/`, `.github/workflows/agent-files-detect.yaml`, `.github/workflows/agent-files-enforce.yaml`). In addition to checking which files were modified, the job scans the diff content for references to protected path strings (e.g. a script that writes to `AGENTS.md` or mentions `skills/`). A PR that does not modify any protected file but whose diff content mentions one of these paths will also be flagged. This job does not block the PR directly — it passes its result to `agent-files-enforce`.
+**detect-protected-changes** — Detects changes to protected agent config files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `skills/`, `.github/workflows/agent-files-detect.yaml`, `.github/workflows/agent-files-enforce.yaml`). In addition to checking which files were modified, the job scans the diff content for references to protected path strings (e.g. a script that writes to `AGENTS.md`, mentions `skills/`, or references `.claude`). A PR that does not modify any protected file but whose diff content mentions one of these paths will also be flagged. This job does not block the PR directly — it passes its result to `agent-files-enforce`.
 
 ### agent-files-enforce
 
