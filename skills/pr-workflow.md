@@ -103,7 +103,7 @@ In interactive sessions (human + agent), always confirm with the human before pu
 
 | Mistake | Fix |
 |---------|-----|
-| Not running tests before pushing | Run `make -C <PATH> lint test test-e2e` locally, mention results in Testing. |
+| Not running tests before pushing | Run `make -C <PATH> lint test test-e2e` locally, mention results in Testing. The AWS driver uses `test-e2e-aws` instead of `test-e2e` — check the driver's Makefile for the correct target. |
 | Putting explanation in Testing instead of evidence | Testing = which tests ran and passed. Why = explanation. |
 | Branching from a stale main | Always fetch and reset from origin before branching. |
 | Missing Jira key in commit message | Prefix every commit with `KFLUXINFRA-1234`. |
