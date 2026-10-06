@@ -104,7 +104,7 @@ This check has two jobs:
 
 **block-vendor-dirs** — Fails if the repository tree contains any vendor-specific agent directories (`.claude/`, `.cursor/`, `.vscode/`, `.agents/`). To fix, remove the offending directory and use `AGENTS.md` and `skills/` instead.
 
-**detect-protected-changes** — Detects changes to protected agent config files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `skills/`, `.github/workflows/agent-files-detect.yaml`, `.github/workflows/agent-files-enforce.yaml`). This job does not block the PR directly — it passes its result to `agent-files-enforce`.
+**detect-protected-changes** — Detects changes to protected agent config files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `skills/`, `.github/workflows/agent-files-detect.yaml`, `.github/workflows/agent-files-enforce.yaml`). In addition to checking which files were modified, the job scans the diff content for references to protected path strings (e.g. a script that writes to `AGENTS.md` or mentions `skills/`). A PR that does not modify any protected file but whose diff content mentions one of these paths will also be flagged. This job does not block the PR directly — it passes its result to `agent-files-enforce`.
 
 ### agent-files-enforce
 
@@ -117,6 +117,8 @@ To resolve:
 3. The `Agent File Policy` status updates to success and merge is unblocked.
 
 If the label was applied but you have reverted all protected file changes, push the revert — the enforce workflow removes the label automatically when the PR no longer modifies protected paths.
+
+If the enforce workflow blocks a PR that does not appear to change protected files, the detection artifact may have been missing or invalid — the enforce workflow fails closed in this case. Re-push to trigger a fresh detect run.
 
 ### Tekton pipeline failures
 
