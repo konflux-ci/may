@@ -98,6 +98,26 @@ to fix the lint errors automatically:
 make -C <PATH> lint-fix
 ```
 
+### agent-files-detect
+
+This check has two jobs:
+
+**block-vendor-dirs** — Fails if the repository tree contains any vendor-specific agent directories (`.claude/`, `.cursor/`, `.vscode/`, `.agents/`). To fix, remove the offending directory and use `AGENTS.md` and `skills/` instead.
+
+**detect-protected-changes** — Detects changes to protected agent config files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `skills/`, `.github/workflows/agent-files-detect.yaml`, `.github/workflows/agent-files-enforce.yaml`). This job does not block the PR directly — it passes its result to `agent-files-enforce`.
+
+### agent-files-enforce
+
+Applies the `agent-config-review-required` label when the detect workflow finds protected file changes, and posts the `Agent File Policy` commit status. The PR is blocked while this label is present.
+
+To resolve:
+
+1. A reviewer with write access to the repository must review the agent config changes.
+2. Once approved, the reviewer removes the `agent-config-review-required` label.
+3. The `Agent File Policy` status updates to success and merge is unblocked.
+
+If the label was applied but you have reverted all protected file changes, push the revert — the enforce workflow removes the label automatically when the PR no longer modifies protected paths.
+
 ### Tekton pipeline failures
 
 The `.tekton/` pipelines run security scans (Clair, Snyk, Coverity, ClamAV, SAST) and multi-arch container builds. These run inside Konflux and their logs are not accessible from the CLI. If they fail:
