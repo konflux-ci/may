@@ -34,6 +34,7 @@ dynamic (one-time instances).
 ## Gotchas
 
 - `Host` type is defined in `../../may`.
+- Only hosts labeled `may.konflux-ci.dev/driver: aws` are reconciled.
 - Host CR annotations (`instance-profile`, `security-group`, `security-group-id`,
   etc.) are authorization boundaries: only principals with Host CR write access
   can set them. Scope the controller IAM role's `iam:PassRole` to permitted
