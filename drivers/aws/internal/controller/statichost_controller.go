@@ -22,14 +22,25 @@ import (
 	maykonfluxcidevv1alpha1 "github.com/konflux-ci/may/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 // StaticHostReconciler reconciles a StaticHost object
 type StaticHostReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+}
+
+// NewStaticHostReconciler constructs a StaticHost reconciler.
+func NewStaticHostReconciler(cl client.Client, scheme *runtime.Scheme) *StaticHostReconciler {
+	return &StaticHostReconciler{
+		Client: cl,
+		Scheme: scheme,
+	}
 }
 
 // +kubebuilder:rbac:groups=may.konflux-ci.dev,resources=statichosts,verbs=get;list;watch;update;patch
@@ -39,9 +50,28 @@ type StaticHostReconciler struct {
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *StaticHostReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	host := &maykonfluxcidevv1alpha1.StaticHost{}
+	if err := r.Get(ctx, req.NamespacedName, host); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 
-	// TODO(user): your logic here
+	if !host.GetDeletionTimestamp().IsZero() {
+		if controllerutil.RemoveFinalizer(host, AWSDriverFinalizer) {
+			return ctrl.Result{}, r.Update(ctx, host)
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if controllerutil.AddFinalizer(host, AWSDriverFinalizer) {
+		return ctrl.Result{}, r.Update(ctx, host)
+	}
+
+	if host.Status.State == nil {
+		logf.FromContext(ctx).Info("initializing host state to Pending", "host", req.NamespacedName)
+		pending := maykonfluxcidevv1alpha1.HostActualStatePending
+		host.Status.State = &pending
+		return ctrl.Result{}, r.Status().Update(ctx, host)
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -49,7 +79,7 @@ func (r *StaticHostReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 // SetupWithManager sets up the controller with the Manager.
 func (r *StaticHostReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&maykonfluxcidevv1alpha1.StaticHost{}).
-		Named("statichost").
+		For(&maykonfluxcidevv1alpha1.StaticHost{}, builder.WithPredicates(predicate.NewPredicateFuncs(isAWSDriverHost))).
+		Named("statichost-aws").
 		Complete(r)
 }
