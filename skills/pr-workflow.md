@@ -90,6 +90,8 @@ Trailers (at end of commit message body). Use the actual agent/tool identity:
 | **go-tidy** | Verifies `go.mod` and `go.sum` are tidy. |
 | **lint-go** | golangci-lint with version pinned in Makefile. |
 | **Tekton pipelines** | Multi-arch container builds and security scans (Clair, Snyk, Coverity, ClamAV). Run inside Konflux — best investigated manually through the Konflux UI. |
+| **agent-files-detect** | Blocks PRs that add vendor-specific agent directories (`.claude/`, `.cursor/`, `.vscode/`, `.agents/`) and detects changes to protected agent config files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `skills/`, workflow files). |
+| **agent-files-enforce** | Applies the `agent-config-review-required` label when protected agent config files are changed. Posts the `Agent File Policy` commit status — blocks merge until a write-access reviewer removes the label. |
 
 **CI caveats:**
 - Acceptance tests can be flaky due to Kind cluster setup — if logs show no relevant errors, rerun with `gh run rerun <run-id> --failed`.
