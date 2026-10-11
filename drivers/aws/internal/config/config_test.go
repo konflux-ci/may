@@ -61,10 +61,10 @@ var _ = Describe("parseInt32", func() {
 	)
 })
 
-var _ = Describe("parseBool", func() {
+var _ = Describe("ParseBool", func() {
 	DescribeTable("valid boolean annotation parsing",
 		func(input string, expected bool) {
-			value, err := parseBool(AnnotationStrictPublicAddress, input)
+			value, err := ParseBool(AnnotationStrictPublicAddress, input)
 
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(value).Should(Equal(expected))
@@ -76,7 +76,7 @@ var _ = Describe("parseBool", func() {
 
 	DescribeTable("invalid boolean annotation parsing",
 		func(input string) {
-			_, err := parseBool(AnnotationStrictPublicAddress, input)
+			_, err := ParseBool(AnnotationStrictPublicAddress, input)
 
 			Expect(err).Should(MatchError(ContainSubstring(AnnotationStrictPublicAddress)))
 		},
