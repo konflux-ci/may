@@ -68,6 +68,9 @@ To reproduce locally:
 make -C <PATH> test-e2e
 ```
 
+> **Note:** The AWS driver uses a dedicated target: `make -C drivers/aws test-e2e-aws`.
+> Check the driver's Makefile if the generic `test-e2e` target does not exist.
+
 If logs show no relevant errors and the failure looks intermittent, rerun the failed job:
 
 ```bash
