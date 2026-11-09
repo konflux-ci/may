@@ -25,6 +25,10 @@ Changes to the following paths require a write-access reviewer to approve them. 
 - `.github/workflows/agent-files-detect.yaml`
 - `.github/workflows/agent-files-enforce.yaml`
 
+### Trusted Bot Exemptions
+
+PRs opened by `red-hat-konflux[bot]` or `dependabot[bot]` where every commit is verified-signed and authored by that bot account are pre-approved by the CI enforcement workflow (`agent-files-enforce.yaml`) — the `agent-config-review-required` label is automatically bypassed. Identity is verified by account ID (not just login name), so a renamed account cannot impersonate a trusted bot. The review agent should not flag these as protected-path violations or submit CHANGES_REQUESTED for them.
+
 ## Skills
 
 - Before opening a PR, writing a PR description, or interpreting CI results, read `skills/pr-workflow.md`.
