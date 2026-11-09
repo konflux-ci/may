@@ -27,7 +27,7 @@ Changes to the following paths require a write-access reviewer to approve them. 
 
 ### Trusted Bot Exemptions
 
-PRs from `red-hat-konflux[bot]` or `dependabot[bot]` that only modify action version pins (SHA digest updates) in protected workflow files are pre-approved by the CI enforcement workflow (`agent-files-enforce.yaml`). The review agent should not flag these as protected-path violations or submit CHANGES_REQUESTED for them. The `agent-config-review-required` label is automatically bypassed for these bots when all commits are verified-signed.
+PRs opened by `red-hat-konflux[bot]` or `dependabot[bot]` where every commit is verified-signed and authored by that bot account are pre-approved by the CI enforcement workflow (`agent-files-enforce.yaml`) — the `agent-config-review-required` label is automatically bypassed. Identity is verified by account ID (not just login name), so a renamed account cannot impersonate a trusted bot. The review agent should not flag these as protected-path violations or submit CHANGES_REQUESTED for them.
 
 ## Skills
 
