@@ -24,7 +24,6 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -110,7 +109,7 @@ func (r *DynamicHostReconciler) drainHost(ctx context.Context, h maykonfluxcidev
 	if err := r.Get(ctx, client.ObjectKeyFromObject(&u), &u); err != nil {
 		if kerrors.IsNotFound(err) {
 			// the runner was deleted, so we can mark the host as drained
-			h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStateDrained)
+			h.Status.State = new(maykonfluxcidevv1alpha1.HostActualStateDrained)
 			return r.Status().Update(ctx, &h)
 		}
 		return err
@@ -174,7 +173,7 @@ func (r *DynamicHostReconciler) ensureDynamicHostIsDraining(ctx context.Context,
 	}
 
 	// the runners are all exausted, we can delete the dynamic host too
-	h.Status.State = ptr.To(maykonfluxcidevv1alpha1.HostActualStateDraining)
+	h.Status.State = new(maykonfluxcidevv1alpha1.HostActualStateDraining)
 	return true, r.Status().Update(ctx, &h)
 }
 

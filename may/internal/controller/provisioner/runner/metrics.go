@@ -29,12 +29,12 @@ var (
 		Help:      "Total number of runners whose cleanup hooks failed",
 	})
 
-	runnerInitialized = prometheus.NewCounter(prometheus.CounterOpts{
+	runnerInitialized = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "may",
 		Subsystem: "runner",
 		Name:      "initialized",
-		Help:      "Total number of runners initialized successfully",
-	})
+		Help:      "Total number of runners initialized",
+	}, []string{"type", "result"})
 
 	runnerDeleted = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "may",

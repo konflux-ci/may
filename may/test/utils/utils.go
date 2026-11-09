@@ -150,6 +150,77 @@ func UninstallOTPServer() {
 	}
 }
 
+// kueueCRDs are the Kueue CRDs the e2e suite installs from the sigs.k8s.io/kueue module.
+// Only the ClusterQueue CRD is needed today — the single Kueue resource the may controller
+// creates and deletes (ResourceFlavor and Cohort appear only as string references in the
+// ClusterQueue spec). Add an entry here if the controller starts managing other Kueue
+// resources; install, teardown, and the presence check all follow this list, so nothing else
+// under the bases dir is ever applied or removed.
+var kueueCRDs = []struct {
+	file    string // manifest filename under the module's config/components/crd/bases dir
+	crdName string // CRD resource name, used to detect a pre-existing install
+}{
+	{file: "kueue.x-k8s.io_clusterqueues.yaml", crdName: "clusterqueues.kueue.x-k8s.io"},
+}
+
+// GetKueueCRDPaths returns absolute paths to the kueueCRDs manifests inside the
+// sigs.k8s.io/kueue module (same version as go.mod).
+func GetKueueCRDPaths() ([]string, error) {
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "sigs.k8s.io/kueue")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to locate sigs.k8s.io/kueue module: %w: %s", err, out)
+	}
+	basesDir := filepath.Join(strings.TrimSpace(string(out)), "config", "components", "crd", "bases")
+	paths := make([]string, 0, len(kueueCRDs))
+	for _, crd := range kueueCRDs {
+		paths = append(paths, filepath.Join(basesDir, crd.file))
+	}
+	return paths, nil
+}
+
+// InstallKueueCRDs installs the kueueCRDs so the may controller can create and delete those
+// Kueue resources in e2e. Only the listed CRDs are installed (no Kueue controller or webhooks),
+// matching what the integration suite uses. Server-side apply avoids the client-side
+// "annotations too long" error on Kueue's large CRDs.
+func InstallKueueCRDs() error {
+	paths, err := GetKueueCRDPaths()
+	if err != nil {
+		return err
+	}
+	args := []string{"apply", "--server-side"}
+	for _, p := range paths {
+		args = append(args, "-f", p)
+	}
+	_, err = Run(exec.Command("kubectl", args...))
+	return err
+}
+
+// UninstallKueueCRDs removes the kueueCRDs installed by InstallKueueCRDs.
+func UninstallKueueCRDs() {
+	paths, err := GetKueueCRDPaths()
+	if err != nil {
+		warnError(err)
+		return
+	}
+	args := []string{"delete", "--ignore-not-found", "--timeout", "60s"}
+	for _, p := range paths {
+		args = append(args, "-f", p)
+	}
+	if _, err := Run(exec.Command("kubectl", args...)); err != nil {
+		warnError(err)
+	}
+}
+
+// IsKueueCRDsInstalled reports whether all kueueCRDs are already present on the cluster.
+func IsKueueCRDsInstalled() bool {
+	names := make([]string, 0, len(kueueCRDs))
+	for _, crd := range kueueCRDs {
+		names = append(names, crd.crdName)
+	}
+	return CheckCRDs(names)
+}
+
 // IsCertManagerCRDsInstalled checks if any Cert Manager CRDs are installed
 // by verifying the existence of key CRDs related to Cert Manager.
 func IsCertManagerCRDsInstalled() bool {

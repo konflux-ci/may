@@ -36,11 +36,15 @@ var (
 	// - CERT_MANAGER_INSTALL_SKIP=true: Skips CertManager installation during test setup.
 	// - OTP_SERVER_INSTALL_SKIP=true: Skips OTP server (multi-platform-controller) installation.
 	// - PROMETHEUS_INSTALL_SKIP=true: Skips prometheus installation.
+	// - KUEUE_INSTALL_SKIP=true: Skips Kueue CRDs installation.
 	skipCertManagerInstall = boolEnv("CERT_MANAGER_INSTALL_SKIP")
 	skipOTPServerInstall   = boolEnv("OTP_SERVER_INSTALL_SKIP")
 	skipPrometheusInstall  = boolEnv("PROMETHEUS_INSTALL_SKIP")
+	skipKueueInstall       = boolEnv("KUEUE_INSTALL_SKIP")
 	// isCertManagerAlreadyInstalled will be set true when CertManager CRDs be found on the cluster
 	isCertManagerAlreadyInstalled = false
+	// isKueueAlreadyInstalled will be set true when Kueue CRDs are found on the cluster
+	isKueueAlreadyInstalled = false
 
 	// projectImage is the name of the image which will be build and loaded
 	// with the code source changes to be tested.
@@ -103,6 +107,19 @@ var _ = BeforeSuite(func() {
 		Expect(utils.InstallOTPServer()).To(Succeed(), "Failed to install OTP server")
 	}
 
+	// Install Kueue CRDs so the may controller can create/delete ClusterQueue objects.
+	// Only the CRDs are installed (no Kueue controller/webhooks).
+	if !skipKueueInstall {
+		By("checking if Kueue CRDs are installed already")
+		isKueueAlreadyInstalled = utils.IsKueueCRDsInstalled()
+		if !isKueueAlreadyInstalled {
+			_, _ = fmt.Fprintln(GinkgoWriter, "Installing Kueue CRDs...")
+			Expect(utils.InstallKueueCRDs()).To(Succeed(), "Failed to install Kueue CRDs")
+		} else {
+			_, _ = fmt.Fprintln(GinkgoWriter, "Kueue CRDs are already installed, skipping installation...")
+		}
+	}
+
 	// ensure a prometheus instance is installed
 	if !skipPrometheusInstall {
 		By("Checking if prometheus is already installed")
@@ -130,6 +147,12 @@ var _ = AfterSuite(func() {
 	if !skipOTPServerInstall {
 		_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling OTP server...\n")
 		utils.UninstallOTPServer()
+	}
+
+	// Teardown Kueue CRDs after the suite if not skipped and if they were not already installed
+	if !skipKueueInstall && !isKueueAlreadyInstalled {
+		_, _ = fmt.Fprintln(GinkgoWriter, "Uninstalling Kueue CRDs...")
+		utils.UninstallKueueCRDs()
 	}
 	// Teardown CertManager after the suite if not skipped and if it was not already installed
 	if !skipCertManagerInstall && !isCertManagerAlreadyInstalled {
