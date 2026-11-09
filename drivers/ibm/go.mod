@@ -1,6 +1,6 @@
 module github.com/konflux-ci/may/drivers/ibm
 
-go 1.25.3
+go 1.26.0
 
 require (
 	github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20260415131407-3607d12111f8

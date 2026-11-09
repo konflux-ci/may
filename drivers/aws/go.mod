@@ -1,6 +1,6 @@
 module github.com/konflux-ci/may/drivers/aws
 
-go 1.25.3
+go 1.26.0
 
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.31
