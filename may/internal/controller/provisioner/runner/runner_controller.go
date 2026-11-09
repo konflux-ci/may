@@ -44,6 +44,14 @@ import (
 	"github.com/konflux-ci/may/pkg/runner"
 )
 
+// runnerTypeLabel returns the runner-type label value, or "unknown" if unset.
+func runnerTypeLabel(u maykonfluxcidevv1alpha1.Runner) string {
+	if runnerType, ok := u.Labels[constants.RunnerTypeLabel]; ok {
+		return runnerType
+	}
+	return "unknown"
+}
+
 // RunnerReconciler reconciles a Runner object
 type RunnerReconciler struct {
 	client.Client
@@ -107,7 +115,12 @@ func (r *RunnerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 		runner.SetReady(&u)
 		l.Info("setting ready", "status", u.Status)
-		return ctrl.Result{}, r.Status().Update(ctx, &u)
+		if err := r.Status().Update(ctx, &u); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		runnerInitialized.WithLabelValues(runnerTypeLabel(u), "success").Inc()
+		return ctrl.Result{}, nil
 
 	case runner.IsReady(u):
 		// create ClusterQueue
@@ -166,8 +179,12 @@ func (r *RunnerReconciler) ensureRunnerIsProvisioned(ctx context.Context, u mayk
 			switch s.Phase {
 			// provisioning failed, let's propagate the error
 			case corev1.PodFailed:
-				if runner.SetNotReadyFailed(&u, fmt.Sprintf("provisioning hook's pod '%s' failed with message: %s", s.Pod, s.PodMessage)) {
-					return false, r.Status().Update(ctx, &u)
+				if runner.SetNotReadyInitializationFailed(&u, fmt.Sprintf("provisioning hook's pod '%s' failed with message: %s", s.Pod, s.PodMessage)) {
+					if err := r.Status().Update(ctx, &u); err != nil {
+						return false, err
+					}
+					runnerInitialized.WithLabelValues(runnerTypeLabel(u), "failure").Inc()
+					return false, nil
 				}
 
 			case corev1.PodSucceeded:
@@ -324,7 +341,10 @@ func (r *RunnerReconciler) finalize(ctx context.Context, u maykonfluxcidevv1alph
 	// remove finalizer from runner
 	l.Info("remove finalizer from runner")
 	if controllerutil.RemoveFinalizer(&u, provisionerconstants.RunnerControllerFinalizer) {
-		return r.Update(ctx, &u)
+		if err := r.Update(ctx, &u); err != nil {
+			return err
+		}
+		runnerDeleted.Inc()
 	}
 	return nil
 }

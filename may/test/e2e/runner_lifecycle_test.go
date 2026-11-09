@@ -22,6 +22,7 @@ package e2e
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -95,7 +96,11 @@ func RunnerLifecycleContexts() {
 			runnerName := "runner-provisioning-hooks"
 			defer deleteRunner(runnerName)
 
-			applyRunnerWithProvisioningHook(runnerName, runnerLifecycleFlavor)
+			runnerManifest{
+				name:         runnerName,
+				flavor:       runnerLifecycleFlavor,
+				provisioning: []runnerHook{{name: "setup", command: `["true"]`}},
+			}.apply()
 
 			By("waiting for Runner to get Initializing and hook pod to be created")
 			Eventually(func(g Gomega) {
@@ -120,9 +125,88 @@ func RunnerLifecycleContexts() {
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
+		It("initializes Runner without hooks directly to Ready", func() {
+			runnerName := "runner-no-hooks"
+			defer deleteRunner(runnerName)
+
+			runnerManifest{name: runnerName, flavor: runnerLifecycleFlavor}.apply()
+
+			By("waiting for Runner to become Ready without any hook pods")
+			Eventually(func(g Gomega) {
+				r := getRunner(g, namespace, runnerName)
+				g.Expect(runner.IsReady(*r)).To(BeTrue())
+				g.Expect(r.Status.HooksStatus.Provisioning).To(BeEmpty(), "no provisioning hook pods should be observed")
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+		})
+
+		It("runs multiple provisioning hooks sequentially", func() {
+			runnerName := "runner-multi-hooks"
+			defer deleteRunner(runnerName)
+
+			runnerManifest{
+				name:   runnerName,
+				flavor: runnerLifecycleFlavor,
+				provisioning: []runnerHook{
+					{name: "setup-first", command: `["sh", "-c", "sleep 10"]`},
+					{name: "setup-second", command: `["true"]`},
+				},
+			}.apply()
+
+			By("waiting for first hook pod to be created")
+			firstHookPod := "p-" + runnerName + "-setup-first"
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pod", firstHookPod, "-n", namespace, "-o", "name")
+				out, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(out).To(ContainSubstring(firstHookPod))
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("verifying second hook pod is not created while first is running")
+			secondHookPod := "p-" + runnerName + "-setup-second"
+			Consistently(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pod", secondHookPod, "-n", namespace, "-o", "name")
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(BeKubectlNotFound(), "second hook pod should not exist while first is running")
+			}).WithTimeout(5 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
+
+			By("waiting for all hooks to complete and Runner to become Ready")
+			Eventually(func(g Gomega) {
+				r := getRunner(g, namespace, runnerName)
+				g.Expect(runner.IsReady(*r)).To(BeTrue())
+				g.Expect(r.Status.HooksStatus.Provisioning).To(HaveLen(2))
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+		})
+
+		It("marks Runner as InitializationFailed when provisioning hook fails", func() {
+			runnerName := "runner-init-failed"
+			defer deleteRunner(runnerName)
+
+			runnerManifest{
+				name:         runnerName,
+				flavor:       runnerLifecycleFlavor,
+				provisioning: []runnerHook{{name: "setup", command: `["sh", "-c", "exit 1"]`}},
+			}.apply()
+
+			By("waiting for Runner to get Initializing and hook pod to be created")
+			Eventually(func(g Gomega) {
+				r := getRunner(g, namespace, runnerName)
+				g.Expect(runner.IsInitializing(*r)).To(BeTrue())
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("waiting for provisioning hook to fail and Runner to get InitializationFailed")
+			Eventually(func(g Gomega) {
+				r := getRunner(g, namespace, runnerName)
+				g.Expect(runner.IsInitializationFailed(*r)).To(BeTrue())
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+		})
+
 		It("runs cleanup hooks and updates status before Runner is deleted", func() {
 			runnerName := "runner-cleanup-hooks"
-			applyRunnerWithCleanupHook(runnerName, runnerLifecycleFlavor)
+			runnerManifest{
+				name:    runnerName,
+				flavor:  runnerLifecycleFlavor,
+				cleanup: []runnerHook{{name: "teardown", command: `["true"]`}},
+			}.apply()
 
 			By("patching Runner to Ready so we can trigger deletion and cleanup")
 			statusPatch := `{"status":{"conditions":[{"type":"Ready","status":"True","reason":"Ready","message":"Ready","lastTransitionTime":"2024-01-01T00:00:00Z"}]}}`
@@ -155,9 +239,29 @@ func RunnerLifecycleContexts() {
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
+		It("exposes may_runner_initialized metric after initialization", func() {
+			By("creating a curl pod to scrape fresh metrics from the controller")
+			podName := createMetricsCurlPod()
+			defer deletePod(namespace, podName)
+
+			By("waiting for the curl pod to complete")
+			waitForPodSucceeded(namespace, podName)
+
+			By("verifying the metrics output contains runner initialization counters")
+			cmd := exec.Command("kubectl", "logs", podName, "-n", namespace)
+			output, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(output).To(ContainSubstring(`may_runner_initialized{result="success",type="static"}`))
+			Expect(output).To(ContainSubstring(`may_runner_initialized{result="failure",type="static"}`))
+		})
+
 		It("does not delete Runner when cleanup fails", func() {
 			runnerName := "runner-cleanup-failed"
-			applyRunnerWithFailingCleanupHook(runnerName, runnerLifecycleFlavor)
+			runnerManifest{
+				name:    runnerName,
+				flavor:  runnerLifecycleFlavor,
+				cleanup: []runnerHook{{name: "teardown", command: `["sh", "-c", "exit 1"]`}},
+			}.apply()
 			defer func() {
 				By("removing finalizers on Runner so it can be deleted during test cleanup")
 				cmd := exec.Command("kubectl", "patch", "runner", runnerName, "-n", namespace, "--type=json", "-p", `[{"op": "replace", "path": "/metadata/finalizers", "value": []}]`)
@@ -190,93 +294,115 @@ func RunnerLifecycleContexts() {
 				g.Expect(r.Finalizers).To(ContainElement("may.konflux-ci.dev/runner-controller"), "finalizer should remain when cleanup failed")
 			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 		})
+
+		It("creates a ClusterQueue named after the Runner when a Runner with spec.queue becomes Ready", func() {
+			runnerName := "runner-create-queue"
+			defer deleteRunner(runnerName)
+			defer deleteClusterQueue(runnerName)
+
+			runnerManifest{
+				name:         runnerName,
+				flavor:       runnerLifecycleFlavor,
+				cohort:       runnerLifecycleCohort,
+				provisioning: []runnerHook{{name: "setup", command: `["true"]`}},
+			}.apply()
+
+			By("waiting for Runner to get Initializing")
+			Eventually(func(g Gomega) {
+				r := getRunner(g, namespace, runnerName)
+				g.Expect(runner.IsInitializing(*r)).To(BeTrue())
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("waiting for provisioning hook to succeed and Runner to become Ready")
+			Eventually(func(g Gomega) {
+				r := getRunner(g, namespace, runnerName)
+				g.Expect(runner.IsReady(*r)).To(BeTrue())
+				g.Expect(r.Status.HooksStatus.Provisioning).NotTo(BeEmpty())
+				g.Expect(r.Status.HooksStatus.Provisioning[0].Phase).To(Equal(v1.PodPhase("Succeeded")))
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("verifying a ClusterQueue named after the Runner was created")
+			Eventually(func(g Gomega) {
+				_, err := getClusterQueueOrErr(runnerName)
+				g.Expect(err).NotTo(HaveOccurred(), "ClusterQueue should be created for a Ready Runner with spec.queue")
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+		})
+
+		It("deletes the ClusterQueue and Runner through the full finalize flow", func() {
+			runnerName := "runner-finalize-queue"
+			defer deleteRunner(runnerName)
+			defer deleteClusterQueue(runnerName)
+
+			runnerManifest{
+				name:    runnerName,
+				flavor:  runnerLifecycleFlavor,
+				cohort:  runnerLifecycleCohort,
+				cleanup: []runnerHook{{name: "teardown", command: `["sh", "-c", "sleep 10"]`}},
+			}.apply()
+
+			By("waiting for Runner to become Ready and the ClusterQueue to be created")
+			Eventually(func(g Gomega) {
+				r := getRunner(g, namespace, runnerName)
+				g.Expect(runner.IsReady(*r)).To(BeTrue())
+				_, err := getClusterQueueOrErr(runnerName)
+				g.Expect(err).NotTo(HaveOccurred(), "ClusterQueue should be created before deletion")
+			}).WithTimeout(3 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("deleting Runner to trigger the finalize flow")
+			deleteRunner(runnerName)
+
+			By("waiting for Runner to enter Cleaning and cleanup hook pod to be created")
+			Eventually(func(g Gomega) {
+				r, err := getRunnerOrErr(g, namespace, runnerName)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(runner.IsCleaning(*r)).To(BeTrue())
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+
+			cleanupPodPrefix := "c-" + runnerName + "-"
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pods", "-n", namespace, "-o", "name")
+				out, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(out).To(ContainSubstring(cleanupPodPrefix), "cleanup hook pod should be created")
+			}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("verifying the ClusterQueue is deleted during finalize")
+			Eventually(func(g Gomega) {
+				_, err := getClusterQueueOrErr(runnerName)
+				g.Expect(err).To(BeKubectlNotFound(), "ClusterQueue should be deleted during finalize")
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+
+			By("verifying the finalizer is removed and the Runner is deleted")
+			Eventually(func(g Gomega) {
+				_, err := getRunnerOrErr(g, namespace, runnerName)
+				g.Expect(err).To(BeKubectlNotFound(), "Runner should be deleted after cleanup hooks succeed and ClusterQueue is removed")
+			}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+		})
 	})
 }
 
-// applyRunnerWithProvisioningHook creates a Runner with runner-type=static and one provisioning hook
-// that runs "true" (exits 0). May will set Initializing and run the hook, then set Ready.
-func applyRunnerWithProvisioningHook(name, flavor string) {
-	yaml := fmt.Sprintf(`apiVersion: may.konflux-ci.dev/v1alpha1
-kind: Runner
-metadata:
-  name: %s
-  namespace: %s
-  labels:
-    %s: %s
-spec:
-  flavor: %s
-  resources:
-    %s: "1"
-  hooks:
-    provisioning:
-    - name: setup
-      template:
-        spec:
-          restartPolicy: Never
-          securityContext:
-            runAsNonRoot: true
-            seccompProfile:
-              type: RuntimeDefault
-          containers:
-          - name: main
-            image: busybox:1.36
-            command: ["true"]
-            securityContext:
-              allowPrivilegeEscalation: false
-              capabilities:
-                drop: ["ALL"]
-              runAsNonRoot: true
-              runAsUser: 1000
-              seccompProfile:
-                type: RuntimeDefault
-`, name, namespace, constants.RunnerTypeLabel, runnerTypeStatic, flavor, flavor)
-	applySpecification(yaml)
+// runnerHook is a single provisioning or cleanup hook: a name and the container command in
+// JSON array form (e.g. `["true"]` or `["sh", "-c", "exit 1"]`).
+type runnerHook struct {
+	name    string
+	command string
 }
 
-// applyRunnerWithCleanupHook creates a Runner with runner-type=static and one cleanup hook
-// that runs "true" (exits 0).
-func applyRunnerWithCleanupHook(name, flavor string) {
-	yaml := fmt.Sprintf(`apiVersion: may.konflux-ci.dev/v1alpha1
-kind: Runner
-metadata:
-  name: %s
-  namespace: %s
-  labels:
-    %s: %s
-spec:
-  flavor: %s
-  resources:
-    %s: "1"
-  hooks:
-    cleanup:
-    - name: teardown
-      template:
-        spec:
-          restartPolicy: Never
-          securityContext:
-            runAsNonRoot: true
-            seccompProfile:
-              type: RuntimeDefault
-          containers:
-          - name: main
-            image: busybox:1.36
-            command: ["true"]
-            securityContext:
-              allowPrivilegeEscalation: false
-              capabilities:
-                drop: ["ALL"]
-              runAsNonRoot: true
-              runAsUser: 1000
-              seccompProfile:
-                type: RuntimeDefault
-`, name, namespace, constants.RunnerTypeLabel, runnerTypeStatic, flavor, flavor)
-	applySpecification(yaml)
+// runnerManifest describes the varying parts of a Runner used by the Runner Lifecycle e2e
+// tests. It replaces the near-identical per-scenario YAML helpers with a single builder so the
+// Runner YAML lives in exactly one place. All Runners get the runner-type=static label.
+type runnerManifest struct {
+	name         string
+	flavor       string
+	cohort       string       // when non-empty, adds spec.queue.cohort so the controller creates a ClusterQueue
+	provisioning []runnerHook // provisioning hooks, run before the Runner becomes Ready
+	cleanup      []runnerHook // cleanup hooks, run during finalize before the Runner is deleted
 }
 
-// applyRunnerWithFailingCleanupHook creates a Runner with runner-type=static and one cleanup hook
-// that runs "exit 1" so cleanup fails and the Runner is not deleted.
-func applyRunnerWithFailingCleanupHook(name, flavor string) {
-	yaml := fmt.Sprintf(`apiVersion: may.konflux-ci.dev/v1alpha1
+// yaml renders the runnerManifest as a Runner manifest.
+func (m runnerManifest) yaml() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, `apiVersion: may.konflux-ci.dev/v1alpha1
 kind: Runner
 metadata:
   name: %s
@@ -287,9 +413,35 @@ spec:
   flavor: %s
   resources:
     %s: "1"
-  hooks:
-    cleanup:
-    - name: teardown
+`, m.name, namespace, constants.RunnerTypeLabel, runnerTypeStatic, m.flavor, m.flavor)
+
+	if m.cohort != "" {
+		fmt.Fprintf(&b, "  queue:\n    cohort: %s\n", m.cohort)
+	}
+
+	if len(m.provisioning) > 0 || len(m.cleanup) > 0 {
+		b.WriteString("  hooks:\n")
+		writeHooks(&b, "provisioning", m.provisioning)
+		writeHooks(&b, "cleanup", m.cleanup)
+	}
+	return b.String()
+}
+
+// apply renders and applies the runnerManifest via kubectl.
+func (m runnerManifest) apply() {
+	applySpecification(m.yaml())
+}
+
+// writeHooks appends a hooks phase block (provisioning or cleanup) to b. It is a no-op when
+// hooks is empty. Each hook runs a single busybox container with the restricted-compliant
+// securityContext required by the tenant namespace's Pod Security policy.
+func writeHooks(b *strings.Builder, phase string, hooks []runnerHook) {
+	if len(hooks) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "    %s:\n", phase)
+	for _, h := range hooks {
+		fmt.Fprintf(b, `    - name: %s
       template:
         spec:
           restartPolicy: Never
@@ -300,7 +452,7 @@ spec:
           containers:
           - name: main
             image: busybox:1.36
-            command: ["sh", "-c", "exit 1"]
+            command: %s
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
@@ -309,6 +461,6 @@ spec:
               runAsUser: 1000
               seccompProfile:
                 type: RuntimeDefault
-`, name, namespace, constants.RunnerTypeLabel, runnerTypeStatic, flavor, flavor)
-	applySpecification(yaml)
+`, h.name, h.command)
+	}
 }
