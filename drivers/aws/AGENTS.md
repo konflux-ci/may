@@ -12,7 +12,7 @@ dynamic (one-time instances).
 | Action | Command |
 |--------|---------|
 | test | `make test` |
-| e2e | `make test-e2e` (isolated Kind) |
+| e2e | `make test-e2e-aws` (isolated Kind, AWS credentials) |
 | run local | `make run` |
 | CRD/types changed | `make manifests generate` |
 | lint | `make lint` / `make lint-fix` |
