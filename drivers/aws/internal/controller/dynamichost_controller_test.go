@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -35,10 +36,11 @@ var _ = Describe("DynamicHost Controller", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 		reconciler := NewDynamicHostReconciler(cl, scheme)
 
-		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+		res, err := reconciler.Reconcile(ctx, reconcile.Request{
 			NamespacedName: types.NamespacedName{Name: "missing", Namespace: "default"},
 		})
 		Expect(err).ShouldNot(HaveOccurred())
+		Expect(res).Should(Equal(ctrl.Result{}))
 	})
 
 	It("adds the AWS driver finalizer", func(ctx context.Context) {
@@ -47,8 +49,9 @@ var _ = Describe("DynamicHost Controller", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := NewDynamicHostReconciler(cl, scheme)
 
-		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
+		res, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
 		Expect(err).ShouldNot(HaveOccurred())
+		Expect(res).Should(Equal(ctrl.Result{}))
 
 		updated := &maykonfluxcidevv1alpha1.DynamicHost{}
 		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
@@ -63,13 +66,13 @@ var _ = Describe("DynamicHost Controller", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := NewDynamicHostReconciler(cl, scheme)
 
-		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
+		res, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
 		Expect(err).ShouldNot(HaveOccurred())
+		Expect(res).Should(Equal(ctrl.Result{}))
 
 		updated := &maykonfluxcidevv1alpha1.DynamicHost{}
 		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
-		Expect(updated.Status.State).ShouldNot(BeNil())
-		Expect(*updated.Status.State).Should(Equal(maykonfluxcidevv1alpha1.HostActualStatePending))
+		Expect(updated.Status.State).Should(HaveValue(Equal(maykonfluxcidevv1alpha1.HostActualStatePending)))
 	})
 
 	It("leaves an initialized host unchanged", func(ctx context.Context) {
@@ -82,33 +85,51 @@ var _ = Describe("DynamicHost Controller", func() {
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := NewDynamicHostReconciler(cl, scheme)
 
-		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
+		res, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
 		Expect(err).ShouldNot(HaveOccurred())
+		Expect(res).Should(Equal(ctrl.Result{}))
 
 		updated := &maykonfluxcidevv1alpha1.DynamicHost{}
 		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
-		Expect(updated.Status.State).ShouldNot(BeNil())
-		Expect(*updated.Status.State).Should(Equal(maykonfluxcidevv1alpha1.HostActualStatePending))
+		Expect(updated.Status.State).Should(HaveValue(Equal(maykonfluxcidevv1alpha1.HostActualStatePending)))
+	})
+
+	It("leaves a Ready host unchanged", func(ctx context.Context) {
+		ready := maykonfluxcidevv1alpha1.HostActualStateReady
+		host := newTestDynamicHost("already-ready", func(h *maykonfluxcidevv1alpha1.DynamicHost) {
+			h.Finalizers = []string{AWSDriverFinalizer}
+			h.Status.State = &ready
+		})
+		scheme := newTestScheme()
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
+		reconciler := NewDynamicHostReconciler(cl, scheme)
+
+		res, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(res).Should(Equal(ctrl.Result{}))
+
+		updated := &maykonfluxcidevv1alpha1.DynamicHost{}
+		Expect(cl.Get(ctx, client.ObjectKeyFromObject(host), updated)).Should(Succeed())
+		Expect(updated.Status.State).Should(HaveValue(Equal(maykonfluxcidevv1alpha1.HostActualStateReady)))
 	})
 
 	It("removes the finalizer on delete", func(ctx context.Context) {
 		now := metav1.Now()
 		host := newTestDynamicHost("dynamic-delete", func(h *maykonfluxcidevv1alpha1.DynamicHost) {
-			h.Finalizers = []string{AWSDriverFinalizer}
+			h.Finalizers = []string{AWSDriverFinalizer, "may.konflux-ci.dev/other"}
 			h.DeletionTimestamp = &now
 		})
 		scheme := newTestScheme()
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(host).WithStatusSubresource(host).Build()
 		reconciler := NewDynamicHostReconciler(cl, scheme)
 
-		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
+		res, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(host)})
 		Expect(err).ShouldNot(HaveOccurred())
+		Expect(res).Should(Equal(ctrl.Result{}))
 
 		updated := &maykonfluxcidevv1alpha1.DynamicHost{}
 		err = cl.Get(ctx, client.ObjectKeyFromObject(host), updated)
-		Expect(client.IgnoreNotFound(err)).Should(Succeed())
-		if err == nil {
-			Expect(updated.Finalizers).ShouldNot(ContainElement(AWSDriverFinalizer))
-		}
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(updated.Finalizers).ShouldNot(ContainElement(AWSDriverFinalizer))
 	})
 })

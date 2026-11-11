@@ -33,7 +33,15 @@ func newTestScheme() *runtime.Scheme {
 	return scheme
 }
 
-func newTestStaticHost(name string, mutate func(*maykonfluxcidevv1alpha1.StaticHost)) *maykonfluxcidevv1alpha1.StaticHost {
+func mutate[T any](ptr *T, mutates ...func(*T)) {
+	for _, mutate := range mutates {
+		if mutate != nil {
+			mutate(ptr)
+		}
+	}
+}
+
+func newTestStaticHost(name string, mutates ...func(*maykonfluxcidevv1alpha1.StaticHost)) *maykonfluxcidevv1alpha1.StaticHost {
 	GinkgoHelper()
 	host := &maykonfluxcidevv1alpha1.StaticHost{
 		ObjectMeta: metav1.ObjectMeta{
@@ -56,13 +64,11 @@ func newTestStaticHost(name string, mutate func(*maykonfluxcidevv1alpha1.StaticH
 			},
 		},
 	}
-	if mutate != nil {
-		mutate(host)
-	}
+	mutate(host, mutates...)
 	return host
 }
 
-func newTestDynamicHost(name string, mutate func(*maykonfluxcidevv1alpha1.DynamicHost)) *maykonfluxcidevv1alpha1.DynamicHost {
+func newTestDynamicHost(name string, mutates ...func(*maykonfluxcidevv1alpha1.DynamicHost)) *maykonfluxcidevv1alpha1.DynamicHost {
 	GinkgoHelper()
 	host := &maykonfluxcidevv1alpha1.DynamicHost{
 		ObjectMeta: metav1.ObjectMeta{
@@ -84,8 +90,6 @@ func newTestDynamicHost(name string, mutate func(*maykonfluxcidevv1alpha1.Dynami
 			},
 		},
 	}
-	if mutate != nil {
-		mutate(host)
-	}
+	mutate(host, mutates...)
 	return host
 }
