@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package provisioner
+package statichost
 
 import (
 	"context"
@@ -50,7 +50,7 @@ var (
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "Controller Suite")
+	RunSpecs(t, "StaticHost Controller Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -66,7 +66,7 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "config", "crd", "bases")},
+		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -101,7 +101,7 @@ var _ = AfterSuite(func() {
 // setting the 'KUBEBUILDER_ASSETS' environment variable. To ensure the binaries are
 // properly set up, run 'make setup-envtest' beforehand.
 func getFirstFoundEnvTestBinaryDir() string {
-	basePath := filepath.Join("..", "..", "..", "bin", "k8s")
+	basePath := filepath.Join("..", "..", "..", "..", "bin", "k8s")
 	entries, err := os.ReadDir(basePath)
 	if err != nil {
 		logf.Log.Error(err, "Failed to read directory", "path", basePath)
