@@ -47,11 +47,12 @@ func (c *Client) LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfi
 	if err := validateAWSConfiguration(cfg); err != nil {
 		return "", err
 	}
+	if clientToken == "" {
+		return "", fmt.Errorf("missing client token")
+	}
 
 	input := buildRunInstancesInput(cfg)
-	if clientToken != "" {
-		input.ClientToken = aws.String(clientToken)
-	}
+	input.ClientToken = aws.String(clientToken)
 
 	out, err := c.api.RunInstances(ctx, input)
 	if err != nil {
@@ -107,66 +108,6 @@ const invalidInstanceIDNotFound = "InvalidInstanceID.NotFound"
 func isInvalidInstanceIDNotFound(err error) bool {
 	var apiErr smithy.APIError
 	return errors.As(err, &apiErr) && apiErr.ErrorCode() == invalidInstanceIDNotFound
-}
-
-// InstanceNotFoundError is returned when DescribeInstances cannot find the instance,
-// including after AWS has purged a terminated record.
-type InstanceNotFoundError struct {
-	InstanceID string
-	Err        error
-}
-
-func (e *InstanceNotFoundError) Error() string {
-	if e == nil {
-		return "EC2 instance not found"
-	}
-	return fmt.Sprintf("DescribeInstances: instance %q not found", e.InstanceID)
-}
-
-func (e *InstanceNotFoundError) Unwrap() error {
-	if e == nil {
-		return nil
-	}
-	return e.Err
-}
-
-// IsInstanceNotFoundError reports whether err is or wraps an InstanceNotFoundError.
-func IsInstanceNotFoundError(err error) bool {
-	var notFound *InstanceNotFoundError
-	return errors.As(err, &notFound)
-}
-
-// InstanceNotRunningError is returned when an instance will not become SSH-ready
-// (stopped, terminated, and similar).
-type InstanceNotRunningError struct {
-	InstanceID string
-	State      types.InstanceStateName
-}
-
-func (e *InstanceNotRunningError) Error() string {
-	if e == nil {
-		return "EC2 instance is not running"
-	}
-	state := instanceStateName(e.State)
-	switch e.State {
-	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated:
-		return fmt.Sprintf("EC2 instance %s is %s", e.InstanceID, state)
-	default:
-		return fmt.Sprintf("EC2 instance %s is %s and is not running", e.InstanceID, state)
-	}
-}
-
-func instanceStateName(state types.InstanceStateName) string {
-	if state == "" {
-		return "unknown"
-	}
-	return string(state)
-}
-
-// IsInstanceNotRunningError reports whether err is or wraps an InstanceNotRunningError.
-func IsInstanceNotRunningError(err error) bool {
-	var notRunning *InstanceNotRunningError
-	return errors.As(err, &notRunning)
 }
 
 func instanceSSHAddress(instance types.Instance, strictPublicAddress bool) string {
