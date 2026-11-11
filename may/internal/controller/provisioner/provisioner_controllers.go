@@ -2,6 +2,7 @@ package provisioner
 
 import (
 	"github.com/go-logr/logr"
+	"github.com/konflux-ci/may/internal/controller/provisioner/dynamichost"
 	"github.com/konflux-ci/may/internal/controller/provisioner/runner"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -15,10 +16,10 @@ func SetupWithManager(mgr ctrl.Manager, setupLog logr.Logger, namespace string) 
 		"Runner":                          &runner.RunnerReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()},
 		"StaticHost":                      &StaticHostReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()},
 		"RunnerHook":                      &RunnerHookReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()},
-		"DynamicHostReconciler":           &DynamicHostReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()},
-		"DynamicHostProvisioner":          &DynamicHostProvisioner{Client: mgr.GetClient(), Scheme: mgr.GetScheme(), Namespace: namespace},
-		"DynamicHostGarbageCollector ":    &DynamicHostGarbageCollector{Client: mgr.GetClient(), Scheme: mgr.GetScheme(), Namespace: namespace},
-		"DynamicHostAutoscalerReconciler": &DynamicHostAutoscalerReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()},
+		"DynamicHostReconciler":           &dynamichost.DynamicHostReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()},
+		"DynamicHostProvisioner":          &dynamichost.DynamicHostProvisioner{Client: mgr.GetClient(), Scheme: mgr.GetScheme(), Namespace: namespace},
+		"DynamicHostGarbageCollector ":    &dynamichost.DynamicHostGarbageCollector{Client: mgr.GetClient(), Scheme: mgr.GetScheme(), Namespace: namespace},
+		"DynamicHostAutoscalerReconciler": &dynamichost.DynamicHostAutoscalerReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()},
 	}
 
 	for n, r := range reconcilers {
