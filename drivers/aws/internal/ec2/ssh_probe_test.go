@@ -40,6 +40,6 @@ var _ = Describe("SSHPortOpen", func() {
 	It("formats a nil wrapped error without panicking", func() {
 		err := &SSHProbeError{Addr: "203.0.113.10:22"}
 		Expect(err.Error()).Should(Equal("ssh probe to 203.0.113.10:22"))
-		Expect((*SSHProbeError)(nil).Error()).Should(Equal("ssh probe: <nil>"))
+		Expect((*SSHProbeError)(nil).Error()).Should(Equal("ssh probe error"))
 	})
 })

@@ -91,7 +91,7 @@ type SSHProbeError struct {
 
 func (e *SSHProbeError) Error() string {
 	if e == nil {
-		return "ssh probe: <nil>"
+		return "ssh probe error"
 	}
 	if e.Err == nil {
 		return fmt.Sprintf("ssh probe to %s", e.Addr)
@@ -100,6 +100,9 @@ func (e *SSHProbeError) Error() string {
 }
 
 func (e *SSHProbeError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
 	return e.Err
 }
 
