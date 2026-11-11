@@ -39,12 +39,18 @@ func NewClient(c *awsec2.Client) *Client {
 }
 
 // LaunchInstance starts a single EC2 instance from cfg and returns its instance ID.
-func (c *Client) LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfiguration) (string, error) {
+// clientToken is passed to RunInstances as ClientToken so retries with the same
+// token do not create additional instances.
+func (c *Client) LaunchInstance(ctx context.Context, cfg internalconfig.AWSConfiguration, clientToken string) (string, error) {
 	if err := validateAWSConfiguration(cfg); err != nil {
 		return "", err
 	}
+	if clientToken == "" {
+		return "", fmt.Errorf("missing client token")
+	}
 
 	input := buildRunInstancesInput(cfg)
+	input.ClientToken = aws.String(clientToken)
 
 	out, err := c.api.RunInstances(ctx, input)
 	if err != nil {
@@ -65,11 +71,15 @@ type InstanceDetails struct {
 }
 
 // DescribeInstance returns driver-relevant details for instanceID.
+// Missing instances (empty describe result or InvalidInstanceID.NotFound) return InstanceNotFoundError.
 func (c *Client) DescribeInstance(ctx context.Context, instanceID string, strictPublicAddress bool) (InstanceDetails, error) {
 	out, err := c.api.DescribeInstances(ctx, &awsec2.DescribeInstancesInput{
 		InstanceIds: []string{instanceID},
 	})
 	if err != nil {
+		if isInvalidInstanceIDNotFound(err) {
+			return InstanceDetails{}, &InstanceNotFoundError{InstanceID: instanceID, Err: err}
+		}
 		return InstanceDetails{}, fmt.Errorf("DescribeInstances: %w", err)
 	}
 
@@ -88,7 +98,7 @@ func (c *Client) DescribeInstance(ctx context.Context, instanceID string, strict
 		}
 	}
 
-	return InstanceDetails{}, fmt.Errorf("DescribeInstances: instance %q not found", instanceID)
+	return InstanceDetails{}, &InstanceNotFoundError{InstanceID: instanceID}
 }
 
 func instanceSSHAddress(instance types.Instance, strictPublicAddress bool) string {
@@ -119,10 +129,8 @@ func (c *Client) SSHReady(ctx context.Context, instanceID string, strictPublicAd
 	}
 
 	switch details.State {
-	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated:
-		return "", false, fmt.Errorf("EC2 instance %s is %s", instanceID, details.State)
-	case types.InstanceStateNameStopping, types.InstanceStateNameStopped:
-		return "", false, fmt.Errorf("EC2 instance %s is %s and is not running", instanceID, details.State)
+	case types.InstanceStateNameShuttingDown, types.InstanceStateNameTerminated, types.InstanceStateNameStopping, types.InstanceStateNameStopped:
+		return "", false, &InstanceNotRunningError{InstanceID: instanceID, State: details.State}
 	case types.InstanceStateNameRunning:
 		return c.sshReadyRunning(ctx, details)
 	default:

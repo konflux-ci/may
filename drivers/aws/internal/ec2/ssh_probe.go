@@ -18,7 +18,6 @@ package ec2
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"time"
 )
@@ -38,7 +37,7 @@ func SSHPortOpen(ctx context.Context, host string) error {
 	addr := net.JoinHostPort(host, sshPort)
 	conn, err := dialer.DialContext(ctx, tcpProtocol, addr)
 	if err != nil {
-		return fmt.Errorf("ssh probe to %s: %w", addr, err)
+		return &SSHProbeError{Addr: addr, Err: err}
 	}
 	_ = conn.Close()
 	return nil
