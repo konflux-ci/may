@@ -67,6 +67,13 @@ var _ = Describe("Manager", Ordered, func() {
 		cmd = exec.Command("make", "install")
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
+		cmd = exec.Command("make", "-C", "../../may", "install")
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to install MAY CRDs")
+		cmd = exec.Command("kubectl", "wait", "--for=condition=Established", "--timeout=60s",
+			"crd/statichosts.may.konflux-ci.dev", "crd/dynamichosts.may.konflux-ci.dev")
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to wait for Host CRDs")
 
 		By("deploying the controller-manager")
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", managerImage))
@@ -92,6 +99,8 @@ var _ = Describe("Manager", Ordered, func() {
 
 		By("uninstalling CRDs")
 		cmd = exec.Command("make", "uninstall")
+		_, _ = utils.Run(cmd)
+		cmd = exec.Command("make", "-C", "../../may", "uninstall")
 		_, _ = utils.Run(cmd)
 
 		By("removing manager namespace")
