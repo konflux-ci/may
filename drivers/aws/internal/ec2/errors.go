@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/smithy-go"
 )
 
 // InstanceNotFoundError is returned when DescribeInstances cannot find the instance,
@@ -48,6 +49,13 @@ func (e *InstanceNotFoundError) Unwrap() error {
 func IsInstanceNotFoundError(err error) bool {
 	_, ok := errors.AsType[*InstanceNotFoundError](err)
 	return ok
+}
+
+const invalidInstanceIDNotFound = "InvalidInstanceID.NotFound"
+
+func isInvalidInstanceIDNotFound(err error) bool {
+	apiErr, ok := errors.AsType[smithy.APIError](err)
+	return ok && apiErr.ErrorCode() == invalidInstanceIDNotFound
 }
 
 // InstanceNotRunningError is returned when an instance will not become SSH-ready

@@ -19,13 +19,11 @@ package ec2
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsec2 "github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/aws/smithy-go"
 
 	internalconfig "github.com/konflux-ci/may/drivers/aws/internal/config"
 )
@@ -101,13 +99,6 @@ func (c *Client) DescribeInstance(ctx context.Context, instanceID string, strict
 	}
 
 	return InstanceDetails{}, &InstanceNotFoundError{InstanceID: instanceID}
-}
-
-const invalidInstanceIDNotFound = "InvalidInstanceID.NotFound"
-
-func isInvalidInstanceIDNotFound(err error) bool {
-	var apiErr smithy.APIError
-	return errors.As(err, &apiErr) && apiErr.ErrorCode() == invalidInstanceIDNotFound
 }
 
 func instanceSSHAddress(instance types.Instance, strictPublicAddress bool) string {
