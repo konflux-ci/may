@@ -20,6 +20,7 @@ limitations under the License.
 package e2e
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"os/exec"
@@ -42,7 +43,7 @@ var (
 
 	// projectImage is the name of the image which will be build and loaded
 	// with the code source changes to be tested.
-	projectImage = "example.com/incluster:v0.0.1"
+	projectImage = "localhost/example.com/incluster:v0.0.1"
 )
 
 // TestE2E runs the end-to-end (e2e) test suite for the project. These tests execute in an isolated,
@@ -57,15 +58,21 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	By("building the manager(Operator) image")
-	coverageParam := fmt.Sprintf("ENABLE_COVERAGE=%s", os.Getenv("ENABLE_COVERAGE"))
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage), coverageParam)
+	ct := cmp.Or(os.Getenv("CONTAINER_TOOL"), "docker")
+	args := []string{
+		"docker-build",
+		fmt.Sprintf("IMG=%s", projectImage),
+		fmt.Sprintf("ENABLE_COVERAGE=%s", os.Getenv("ENABLE_COVERAGE")),
+		fmt.Sprintf("CONTAINER_TOOL=%s", ct),
+	}
+	cmd := exec.Command("make", args...)
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
 
 	// TODO(user): If you want to change the e2e test vendor from Kind, ensure the image is
 	// built and available before running the tests. Also, remove the following block.
 	By("loading the manager(Operator) image on Kind")
-	err = utils.LoadImageToKindClusterWithName(projectImage)
+	err = utils.LoadImageToKindClusterWithName(ct, projectImage)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager(Operator) image into Kind")
 
 	// The tests-e2e are intended to run on a temporary cluster that is created and destroyed for testing.
