@@ -24,6 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsec2 "github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/smithy-go"
 	internalconfig "github.com/konflux-ci/may/drivers/aws/internal/config"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -185,8 +186,8 @@ var _ = Describe("LaunchInstance", func() {
 			},
 		})
 
-		_, err := client.LaunchInstance(ctx, internalconfig.AWSConfiguration{})
-		Expect(err).Should(MatchError(ContainSubstring(internalconfig.AnnotationAmi)))
+		Expect(client.LaunchInstance(ctx, internalconfig.AWSConfiguration{}, "")).Error().
+			Should(MatchError(ContainSubstring(internalconfig.AnnotationAmi)))
 		Expect(called).Should(BeFalse())
 	})
 
@@ -199,13 +200,12 @@ var _ = Describe("LaunchInstance", func() {
 			},
 		})
 
-		_, err := client.LaunchInstance(ctx, internalconfig.AWSConfiguration{
+		Expect(client.LaunchInstance(ctx, internalconfig.AWSConfiguration{
 			Ami:           validLaunchConfig.Ami,
 			InstanceType:  validLaunchConfig.InstanceType,
 			SubnetId:      "subnet-0123456789abcdef0",
 			SecurityGroup: "my-sg",
-		})
-		Expect(err).Should(MatchError(And(
+		}, "")).Error().Should(MatchError(And(
 			ContainSubstring(internalconfig.AnnotationSecurityGroup),
 			ContainSubstring(internalconfig.AnnotationSubnetId),
 		)))
@@ -221,17 +221,30 @@ var _ = Describe("LaunchInstance", func() {
 			},
 		})
 
-		_, err := client.LaunchInstance(ctx, internalconfig.AWSConfiguration{
+		Expect(client.LaunchInstance(ctx, internalconfig.AWSConfiguration{
 			Ami:             validLaunchConfig.Ami,
 			InstanceType:    validLaunchConfig.InstanceType,
 			SubnetId:        "subnet-0123456789abcdef0",
 			SecurityGroup:   "my-sg",
 			SecurityGroupId: "sg-0123456789abcdef0",
-		})
-		Expect(err).Should(MatchError(And(
+		}, "")).Error().Should(MatchError(And(
 			ContainSubstring(internalconfig.AnnotationSecurityGroup),
 			ContainSubstring(internalconfig.AnnotationSecurityGroupId),
 		)))
+		Expect(called).Should(BeFalse())
+	})
+
+	It("rejects an empty client token before calling the API", func(ctx context.Context) {
+		called := false
+		client := newMockClient(&mockEC2API{
+			runInstances: func(context.Context, *awsec2.RunInstancesInput, ...func(*awsec2.Options)) (*awsec2.RunInstancesOutput, error) {
+				called = true
+				return nil, nil
+			},
+		})
+
+		Expect(client.LaunchInstance(ctx, validLaunchConfig, "")).Error().
+			Should(MatchError(ContainSubstring("client token")))
 		Expect(called).Should(BeFalse())
 	})
 
@@ -240,13 +253,14 @@ var _ = Describe("LaunchInstance", func() {
 		client := newMockClient(&mockEC2API{
 			runInstances: func(_ context.Context, input *awsec2.RunInstancesInput, _ ...func(*awsec2.Options)) (*awsec2.RunInstancesOutput, error) {
 				Expect(aws.ToString(input.ImageId)).Should(Equal(validLaunchConfig.Ami))
+				Expect(aws.ToString(input.ClientToken)).Should(Equal("host-uid-1"))
 				return &awsec2.RunInstancesOutput{
 					Instances: []types.Instance{{InstanceId: aws.String(instanceID)}},
 				}, nil
 			},
 		})
 
-		gotInstanceID, err := client.LaunchInstance(ctx, validLaunchConfig)
+		gotInstanceID, err := client.LaunchInstance(ctx, validLaunchConfig, "host-uid-1")
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(gotInstanceID).Should(Equal(instanceID))
 	})
@@ -259,8 +273,7 @@ var _ = Describe("LaunchInstance", func() {
 			},
 		})
 
-		_, err := client.LaunchInstance(ctx, validLaunchConfig)
-		Expect(err).Should(And(
+		Expect(client.LaunchInstance(ctx, validLaunchConfig, "host-uid-1")).Error().Should(And(
 			MatchError(expectedErr),
 			MatchError(ContainSubstring("RunInstances")),
 		))
@@ -273,8 +286,8 @@ var _ = Describe("LaunchInstance", func() {
 			},
 		})
 
-		_, err := client.LaunchInstance(ctx, validLaunchConfig)
-		Expect(err).Should(MatchError(ContainSubstring("no instance")))
+		Expect(client.LaunchInstance(ctx, validLaunchConfig, "host-uid-1")).Error().
+			Should(MatchError(ContainSubstring("no instance")))
 	})
 
 	It("errors when RunInstances returns an instance without an ID", func(ctx context.Context) {
@@ -286,8 +299,8 @@ var _ = Describe("LaunchInstance", func() {
 			},
 		})
 
-		_, err := client.LaunchInstance(ctx, validLaunchConfig)
-		Expect(err).Should(MatchError(ContainSubstring("no instance")))
+		Expect(client.LaunchInstance(ctx, validLaunchConfig, "host-uid-1")).Error().
+			Should(MatchError(ContainSubstring("no instance")))
 	})
 })
 
@@ -348,11 +361,31 @@ var _ = Describe("DescribeInstance", func() {
 			},
 		})
 
-		_, err := client.DescribeInstance(ctx, "i-missing", false)
-		Expect(err).Should(MatchError(And(
-			ContainSubstring("DescribeInstances"),
-			ContainSubstring(`instance "i-missing" not found`),
-		)))
+		Expect(client.DescribeInstance(ctx, "i-missing", false)).Error().Should(And(
+			WithTransform(IsInstanceNotFoundError, BeTrue()),
+			MatchError(And(
+				ContainSubstring("DescribeInstances"),
+				ContainSubstring(`instance "i-missing" not found`),
+			)),
+		))
+	})
+
+	It("maps InvalidInstanceID.NotFound to InstanceNotFoundError", func(ctx context.Context) {
+		instanceID := "i-purged"
+		apiErr := &smithy.GenericAPIError{
+			Code:    "InvalidInstanceID.NotFound",
+			Message: "The instance ID 'i-purged' does not exist",
+		}
+		client := newMockClient(&mockEC2API{
+			describeInstances: func(context.Context, *awsec2.DescribeInstancesInput, ...func(*awsec2.Options)) (*awsec2.DescribeInstancesOutput, error) {
+				return nil, apiErr
+			},
+		})
+
+		Expect(client.DescribeInstance(ctx, instanceID, false)).Error().Should(And(
+			WithTransform(IsInstanceNotFoundError, BeTrue()),
+			MatchError(apiErr),
+		))
 	})
 
 	It("returns empty state when the instance state is missing", func(ctx context.Context) {
@@ -383,8 +416,7 @@ var _ = Describe("DescribeInstance", func() {
 			},
 		})
 
-		_, err := client.DescribeInstance(ctx, instanceID, false)
-		Expect(err).Should(And(
+		Expect(client.DescribeInstance(ctx, instanceID, false)).Error().Should(And(
 			MatchError(expectedErr),
 			MatchError(ContainSubstring("DescribeInstances")),
 		))
@@ -420,7 +452,7 @@ var _ = Describe("SSHReady", func() {
 		Expect(address).Should(BeEmpty())
 	})
 
-	It("returns an SSH probe error when the address is unreachable", func() {
+	It("returns an SSH probe error when the address is unreachable", func(ctx context.Context) {
 		instanceID := "i-ssh-unreachable"
 		// Invalid IP fails the probe quickly without waiting for a TCP timeout.
 		address := "999.999.999.999"
@@ -430,8 +462,9 @@ var _ = Describe("SSHReady", func() {
 			},
 		})
 
-		gotAddress, ready, err := client.SSHReady(context.Background(), instanceID, false)
-		Expect(err).Should(MatchError(ContainSubstring("ssh probe to " + address + ":22")))
+		gotAddress, ready, err := client.SSHReady(ctx, instanceID, false)
+		Expect(IsSSHProbeError(err)).Should(BeTrue())
+		Expect(err).Should(MatchError(HavePrefix("ssh probe to " + address + ":22")))
 		Expect(ready).Should(BeFalse())
 		Expect(gotAddress).Should(BeZero())
 	})
@@ -463,6 +496,7 @@ var _ = Describe("SSHReady", func() {
 		})
 
 		_, ready, err := client.SSHReady(ctx, instanceID, false)
+		Expect(IsInstanceNotRunningError(err)).Should(BeTrue())
 		Expect(err).Should(MatchError(ContainSubstring("terminated")))
 		Expect(ready).Should(BeFalse())
 	})
@@ -477,6 +511,7 @@ var _ = Describe("SSHReady", func() {
 		})
 
 		gotAddress, ready, err := client.SSHReady(ctx, instanceID, false)
+		Expect(IsInstanceNotRunningError(err)).Should(BeTrue())
 		Expect(err).Should(MatchError(ContainSubstring("shutting-down")))
 		Expect(ready).Should(BeFalse())
 		Expect(gotAddress).Should(BeZero())
@@ -492,6 +527,7 @@ var _ = Describe("SSHReady", func() {
 		})
 
 		gotAddress, ready, err := client.SSHReady(ctx, instanceID, false)
+		Expect(IsInstanceNotRunningError(err)).Should(BeTrue())
 		Expect(err).Should(MatchError(And(
 			ContainSubstring("stopped"),
 			ContainSubstring("not running"),
@@ -509,6 +545,7 @@ var _ = Describe("SSHReady", func() {
 		})
 
 		_, ready, err := client.SSHReady(ctx, instanceID, false)
+		Expect(IsInstanceNotRunningError(err)).Should(BeTrue())
 		Expect(err).Should(MatchError(And(
 			ContainSubstring("stopping"),
 			ContainSubstring("not running"),
@@ -526,6 +563,7 @@ var _ = Describe("SSHReady", func() {
 		})
 
 		_, ready, err := client.SSHReady(ctx, instanceID, false)
+		Expect(IsInstanceNotRunningError(err)).Should(BeFalse())
 		Expect(err).Should(And(
 			MatchError(expectedErr),
 			MatchError(ContainSubstring("DescribeInstances")),
