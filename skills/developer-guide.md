@@ -1,14 +1,16 @@
 ---
 name: developer-guide
-description: |
-  Use when an agent needs MAY's architecture and entry points, needs to trace a Pod → Claim → Runner → Host flow, is adding or changing a driver, or is debugging a stuck Claim, Runner, or Host.
+description: >
+  Use when an agent needs MAY's architecture and entry points, needs to trace a
+  Pod → Claim → Runner → Host flow, is adding or changing a driver, or is debugging
+  a stuck Claim, Runner, or Host.
 ---
 
 # MAY Developer Guide
 
-Architecture and orientation for the MAY codebase, as of 2026-11-25. Repo layout and per-module commands live in `AGENTS.md` at the root and in each module; PR and CI process live in `skills/pr-workflow.md` and `skills/ci-troubleshooting.md`. Tests are required for every code change; do not report work as complete until the relevant tests pass. See section 7 and `skills/testing-standards.md`.
+Architecture and orientation for the MAY codebase, as of 2026-11-25. Repo layout and per-module commands live in `AGENTS.md` at the root and in each module; PR and CI process live in `skills/pr-workflow.md` and `skills/ci-troubleshooting.md`. Tests are required for every code change; do not report work as complete until the relevant tests pass. See Testing Is Required and `skills/testing-standards.md`.
 
-## 1. What MAY Does
+## What MAY Does
 
 MAY separates the request from the capacity: Claims connect a workload to a requested flavor, Runners provide the resources for that flavor, and Hosts supply the infrastructure that backs the Runners. Work arrives as Pods. MAY reacts to a Pod in a tenant namespace — one labelled `konflux-ci.dev/type=tenant` — when the Pod carries an annotation key beginning with `kueue.konflux-ci.dev/requests-`; the suffix after the prefix is the flavor.
 
@@ -16,7 +18,7 @@ The Claimer checks that label in code, and the Pod webhook scopes itself to tena
 
 StaticHost and DynamicHost are the hosts that back Runners, and drivers own them. One Kueue `ClusterQueue` is created per Runner that sets `spec.queue`. In the demo, Tekton PipelineRuns reach MAY as Pods through tekton-kueue's CEL mapping of the `build-platforms` param.
 
-## 2. Modules and Entry Points
+## Modules and Entry Points
 
 | Module | Entry point | Role | Status (2026-11-25) |
 | --- | --- | --- | --- |
@@ -25,11 +27,11 @@ StaticHost and DynamicHost are the hosts that back Runners, and drivers own them
 | `drivers/aws/` | `drivers/aws/cmd/main.go` | EC2-backed hosts. | Host reconcilers are scaffolds. The EC2 client exists but is not wired. |
 | `drivers/ibm/` | `drivers/ibm/cmd/main.go` | IBM-backed hosts. | Scaffold only. |
 
-Each module has its own `go.mod`, `Makefile`, `AGENTS.md`, and `Dockerfile`; there is no root `Makefile` and no `go.work` in the repository. All four modules currently require Go `1.26.0`.
+Each module has its own `go.mod`, `Makefile`, `AGENTS.md`, and `Dockerfile`; there is no root `Makefile` and no `go.work` in the repository. Each module's `go.mod` is the source of truth for its Go version.
 
 The core binary reads `WATCH_NAMESPACE`. When the variable is empty, startup logs "missing required environment variable" and continues with an empty namespace. The Pod webhook is registered unless `ENABLE_WEBHOOKS` equals the string `false`.
 
-## 3. CRDs and the Scheduling Contract
+## CRDs and the Scheduling Contract
 
 | Kind | Purpose | Key spec fields | Status signals | Anchor |
 | --- | --- | --- | --- | --- |
@@ -46,19 +48,19 @@ The Pod annotation key is `kueue.konflux-ci.dev/requests-<flavor>`. A Runner mat
 | Constant | Value | Set by / read by | Anchor |
 | --- | --- | --- | --- |
 | `RunnerTypeLabel` | `may.konflux-ci.dev/runner-type` | Values `static` and `dynamic`. Gates the Provisioner's Runner predicate. | `may/pkg/constants/constants.go` → `RunnerTypeLabel`; `may/internal/controller/provisioner/runner/runner_controller.go` → `SetupWithManager` |
-| `RunnerIdLabel` | `may.konflux-ci.dev/runner-id` | StaticHost reconciler writes the instance index. | `may/pkg/constants/constants.go` → `RunnerIdLabel`; `may/internal/controller/provisioner/statichost_controller.go` → `ensureHostRunnersExists` |
+| `RunnerIdLabel` | `may.konflux-ci.dev/runner-id` | StaticHost reconciler writes the instance index. | `may/pkg/constants/constants.go` → `RunnerIdLabel`; `may/internal/controller/provisioner/statichost/statichost_controller.go` → `ensureHostRunnersExists` |
 | `RunnerNameLabel` | `may.konflux-ci.dev/runner` | Hook Pods. | `may/pkg/constants/constants.go` → `RunnerNameLabel`; `may/internal/controller/provisioner/runner/runner_controller.go` → `runNextHookPod` |
 | `RunnerHookNameLabel` | `may.konflux-ci.dev/hook` | Hook Pods. | `may/pkg/constants/constants.go` → `RunnerHookNameLabel`; `may/internal/controller/provisioner/runner/runner_controller.go` → `runNextHookPod` |
 | `RunnerHookPhaseLabel` | `may.konflux-ci.dev/hook-phase` | Values `provisioning` and `cleanup`. | `may/pkg/constants/constants.go` → `RunnerHookPhaseLabel`; `may/internal/controller/provisioner/constants/constants.go` → `RunnerHookPhaseLabelProvisioningValue`, `RunnerHookPhaseLabelCleanupValue` |
 | `RunnerUIDLabel` | `may.konflux-ci.dev/runner-uid` | Hook Pods. Set to the Runner UID. | `may/pkg/constants/constants.go` → `RunnerUIDLabel`; `may/internal/controller/provisioner/runner/runner_controller.go` → `runNextHookPod` |
 | `RunnerUserLabel` | `may.konflux-ci.dev/runner-user` | Hook Pods receive it set to the Runner UID. The Binder reads it from the Runner's labels to build `user-dir`, so the Runner itself must carry it. | `may/pkg/constants/constants.go` → `RunnerUserLabel`; `may/internal/controller/provisioner/runner/runner_controller.go` → `runNextHookPod`; `may/internal/controller/binder/runnerbinder_controller.go` → `Reconcile` |
-| `HostLabel` | `may.konflux-ci.dev/host` | Runner → owning host. | `may/pkg/constants/label.go` → `HostLabel`; `may/internal/controller/provisioner/statichost_controller.go` → `ensureHostRunnersExists`; `may/internal/controller/provisioner/dynamichost_controller.go` → `ensureRunnerExists` |
+| `HostLabel` | `may.konflux-ci.dev/host` | Runner → owning host. | `may/pkg/constants/label.go` → `HostLabel`; `may/internal/controller/provisioner/statichost/statichost_controller.go` → `ensureHostRunnersExists`; `may/internal/controller/provisioner/dynamichost/dynamichost_controller.go` → `ensureRunnerExists` |
 | `MayPodSchedulingGate` | `may.konflux-ci.dev/scheduling` | Webhook adds. Gater removes. | `may/pkg/constants/pod.go` → `MayPodSchedulingGate`; `may/internal/webhook/v1/pod_webhook.go` → `Default`; `may/internal/controller/gater/gater_controller.go` → `ensurePodCanBeScheduled` |
 | `ClaimControllerFinalizer` | `may.konflux-ci.dev/reservation-controller` | Claim and reserved Runner. | `may/pkg/constants/constants.go` → `ClaimControllerFinalizer`; `may/internal/controller/scheduler/claim_controller.go` → `Reconcile`; `may/pkg/scheduler/scheduler.go` → `setInUseBy` |
-| `HostControllerFinalizer` | `may.konflux-ci.dev/host-controller` | Core host finalizer. | `may/pkg/constants/label.go` → `HostControllerFinalizer`; `may/internal/controller/provisioner/statichost_controller.go` → `Reconcile`; `may/internal/controller/provisioner/dynamichost_controller.go` → `Reconcile` |
+| `HostControllerFinalizer` | `may.konflux-ci.dev/host-controller` | Core host finalizer. | `may/pkg/constants/label.go` → `HostControllerFinalizer`; `may/internal/controller/provisioner/statichost/statichost_controller.go` → `Reconcile`; `may/internal/controller/provisioner/dynamichost/dynamichost_controller.go` → `Reconcile` |
 | `RunnerControllerFinalizer` | `may.konflux-ci.dev/runner-controller` | Provisioner Runner finalizer. | `may/internal/controller/provisioner/constants/constants.go` → `RunnerControllerFinalizer`; `may/internal/controller/provisioner/runner/runner_controller.go` → `Reconcile`, `finalize` |
 | `InClusterDriverFinalizer` | `drivers.may.konflux-ci.dev/incluster` | Incluster driver's own finalizer. | `drivers/incluster/internal/controller/statichost_controller.go` → `InClusterDriverFinalizer` |
-| Pipeline label | `tekton.dev/pipeline` | Claimer copies Pod → Claim; the Scheduler copies Claim → Runner. Host controllers mirror it into `status.pipelines` / `status.pipeline`. | `may/internal/controller/claimer/claimer_controller.go` → `pipelineLabelKey`; `may/pkg/runner/runner.go` → `SetInUseBy`; `may/internal/controller/provisioner/statichost_controller.go` → `ensureRunnersInfoIsInStatus`; `may/internal/controller/provisioner/dynamichost_controller.go` → `ensureRunnersPipelinesAreInStatus` |
+| Pipeline label | `tekton.dev/pipeline` | Claimer copies Pod → Claim; the Scheduler copies Claim → Runner. Host controllers mirror it into `status.pipelines` / `status.pipeline`. | `may/internal/controller/claimer/claimer_controller.go` → `pipelineLabelKey`; `may/pkg/runner/runner.go` → `SetInUseBy`; `may/internal/controller/provisioner/statichost/statichost_controller.go` → `ensureRunnersInfoIsInStatus`; `may/internal/controller/provisioner/dynamichost/dynamichost_controller.go` → `ensureRunnersPipelinesAreInStatus` |
 | `FieldOwnerOperator` | `may.konflux-ci.dev` | Declared in `may/pkg/constants/constants.go`. No caller today. | `may/pkg/constants/constants.go` → `FieldOwnerOperator` |
 
 ### Status semantics
@@ -67,7 +69,7 @@ The Pod annotation key is `kueue.konflux-ci.dev/requests-<flavor>`. A Runner mat
 
 On a Runner, the reason `Stopped` is read by the host controllers but never set: the generic `SetNotReady` has no caller, and the specific setters use other reasons, so `status.runners.stopped` stays `0` unless a Runner's `Ready` condition is written out of band. On a Claim, the reason `Unclaimable` is declared and read by `IsUnclaimable`, but no controller sets it today.
 
-## 4. Reconciler Map
+## Reconciler Map
 
 | Controller (Named) | Watches | Writes | Anchor |
 | --- | --- | --- | --- |
@@ -77,27 +79,27 @@ On a Runner, the reason `Stopped` is read by the host controllers but never set:
 | `claim` | Claims. Pods in `Succeeded`/`Failed`. Runner updates. | Runner `spec.inUseBy`, Claim conditions and finalizer. Deletes the Claim and linked Runners. | `may/internal/controller/scheduler/claim_controller.go` → `ClaimReconciler` |
 | `runnerbinder` | Runners where `runner.IsReserved`. | The workload Secret named after the Claim. | `may/internal/controller/binder/runnerbinder_controller.go` → `RunnerBinderReconciler` |
 | `runner` | Runners labelled `runner-type` `static` or `dynamic`. Owns Pods. Claim delete events requeue static Runners. | Runner `Ready` condition, hook Pods, and `ClusterQueue`. | `may/internal/controller/provisioner/runner/runner_controller.go` → `RunnerReconciler` |
-| `runnerhooks` | Runners labelled `runner-type=static`. Owns Pods. | Runner `status.hooksStatus`. | `may/internal/controller/provisioner/runnerhook_controller.go` → `RunnerHookReconciler` |
-| `statichost` | StaticHosts whose `status.state` is set and not `Pending`. Owns Runners. | Creates and deletes Runners. Updates host status. | `may/internal/controller/provisioner/statichost_controller.go` → `StaticHostReconciler` |
-| `dynamichost` | DynamicHosts. Owns Runners. | Creates and deletes exactly one Runner. Updates host status. | `may/internal/controller/provisioner/dynamichost_controller.go` → `DynamicHostReconciler` |
-| `dynamichost-provisioner` | Claims, DynamicHostAutoscalers, DynamicHosts. | Creates a DynamicHost for a Pending Claim. | `may/internal/controller/provisioner/dynamichost_provisioner.go` → `DynamicHostProvisioner` |
-| `dynamichost-gc` | DynamicHosts whose `status.state` is `Drained`. | Deletes the DynamicHost. | `may/internal/controller/provisioner/dynamichost_gc.go` → `DynamicHostGarbageCollector` |
-| `dynamichostautoscaler` | DynamicHostAutoscalers. | Nothing. No-op reconciler today. | `may/internal/controller/provisioner/dynamichostautoscaler_controller.go` → `DynamicHostAutoscalerReconciler` |
+| `runnerhooks` | Runners labelled `runner-type=static`. Owns Pods. | Runner `status.hooksStatus`. | `may/internal/controller/provisioner/runnerhook/runnerhook_controller.go` → `RunnerHookReconciler` |
+| `statichost` | StaticHosts whose `status.state` is set and not `Pending`. Owns Runners. | Creates and deletes Runners. Updates host status. | `may/internal/controller/provisioner/statichost/statichost_controller.go` → `StaticHostReconciler` |
+| `dynamichost` | DynamicHosts. Owns Runners. | Creates and deletes exactly one Runner. Updates host status. | `may/internal/controller/provisioner/dynamichost/dynamichost_controller.go` → `DynamicHostReconciler` |
+| `dynamichost-provisioner` | Claims, DynamicHostAutoscalers, DynamicHosts. | Creates a DynamicHost for a Pending Claim. | `may/internal/controller/provisioner/dynamichost/dynamichost_provisioner.go` → `DynamicHostProvisioner` |
+| `dynamichost-gc` | DynamicHosts whose `status.state` is `Drained`. | Deletes the DynamicHost. | `may/internal/controller/provisioner/dynamichost/dynamichost_gc.go` → `DynamicHostGarbageCollector` |
+| `dynamichostautoscaler` | DynamicHostAutoscalers. | Nothing. No-op reconciler today. | `may/internal/controller/provisioner/dynamichost/dynamichostautoscaler_controller.go` → `DynamicHostAutoscalerReconciler` |
 
 Controller registration is fixed in `may/cmd/main.go`; the provisioner's reconcilers come from a map, so their relative order is not guaranteed. Field indexers in `may/pkg/indexer` give the scheduler and finalizers direct lookups for free Runners, reserved Runners, and pending Claims.
 
-## 5. End-to-End Flow
+## End-to-End Flow
 
-1. A tenant Pod with a flavor annotation is gated by the webhook.
-2. The Claimer creates a Claim; the scheduler reserves a free Runner whose resources include the flavor.
-3. The Binder writes the workload Secret with OTP credentials, and the Gater removes the scheduling gate.
-4. The Provisioner runs provisioning hooks, marks the Runner `Ready`, and creates its `ClusterQueue` when requested.
+1. For static hosts, drivers create Runners; the Provisioner runs provisioning hooks and marks them `Ready`, creating the `ClusterQueue` when requested.
+2. A tenant Pod with a flavor annotation is gated by the webhook.
+3. The Claimer creates a Claim; the scheduler reserves a `Ready` Runner whose resources include the flavor.
+4. The Binder writes the workload Secret with OTP credentials, and the Gater removes the scheduling gate.
 5. When the Pod finishes, the Claim and its Runner are deleted after cleanup hooks run.
 6. For a pending Claim with a matching `DynamicHostAutoscaler`, MAY provisions a DynamicHost and one Runner instead of reusing an existing Runner, then garbage-collects the host once drained.
 
 Executable examples live in `may/test/e2e/full_flow_test.go`, `may/test/e2e/dynamichost_test.go`, and `may/test/e2e/dynamichostautoscaler_test.go`.
 
-## 6. Driver Contract and Adding a Driver
+## Driver Contract and Adding a Driver
 
 A driver owns `StaticHost` and `DynamicHost` reconciliation and writes `status.state`; the core creates and deletes Runners. The core waits while `status.state` is nil or `Pending`. A driver sets `status.state=Ready` once its host resources exist; the incluster driver treats resource creation as acceptance and does not probe runner availability, while a production driver should probe acceptance before setting Ready.
 
@@ -115,7 +117,7 @@ To add a new driver, copy `drivers/incluster` as the starting point, then:
 7. Add an envtest suite under `internal/controller/` and a Kind e2e suite under `test/e2e/`.
 8. Document the module in its `AGENTS.md`. Add it to the module table in this guide.
 
-## 7. Testing Is Required
+## Testing Is Required
 
 Tests are part of every code change, not a follow-up. Run them yourself; do not ask the user to run them for you. Do not report a change as complete until the relevant tests pass.
 
@@ -127,12 +129,12 @@ Tests are part of every code change, not a follow-up. Run them yourself; do not 
 
 If a test cannot run, say so explicitly and state what remains unverified. Do not claim completion from a code read or a compile-only check. If `controller-gen` fails because a parent `go.work` excludes the module, prefix the test command with `GOWORK=off`.
 
-## 8. Load-Bearing Decisions
+## Load-Bearing Decisions
 
 | Decision                                                           | Enforced at                                                                                                                           |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Claim, Runner, and Host are separate kinds.                        | `may/api/v1alpha1/claim_types.go`, `may/api/v1alpha1/runner_types.go`, `may/api/v1alpha1/host_types.go`                               |
-| Core owns Runners. Drivers own Hosts.                              | `may/internal/controller/provisioner/statichost_controller.go` → `Reconcile` waits on `status.state`                                  |
+| Core owns Runners. Drivers own Hosts.                              | `may/internal/controller/provisioner/statichost/statichost_controller.go` → `Reconcile` waits on `status.state`                                  |
 | Flavor matches a Runner resource key, not a field.                 | `may/pkg/scheduler/scheduler.go` → `findBestRunner`                                                                                   |
 | Gate is added by the webhook and removed by a separate controller. | `may/internal/webhook/v1/pod_webhook.go` → `Default`; `may/internal/controller/gater/gater_controller.go` → `ensurePodCanBeScheduled` |
 | One ClusterQueue per Runner. Borrowing is disabled.                | `may/internal/controller/provisioner/runner/runner_controller.go` → `ensureClusterQueue` sets `BorrowingLimit` to zero                |
@@ -140,7 +142,7 @@ If a test cannot run, say so explicitly and state what remains unverified. Do no
 | Credentials are handed over as an OTP, not a mounted key.          | `may/internal/controller/binder/runnerbinder_controller.go` → `Reconcile` POSTs to `/store-key`                                       |
 | Each component is its own Go module.                               | `may/go.mod`, `drivers/aws/go.mod`, `drivers/ibm/go.mod`, `drivers/incluster/go.mod`                                                  |
 
-## 9. Troubleshooting
+## Troubleshooting
 
 For CI-only failures, use `skills/ci-troubleshooting.md` instead of the following table:
 
@@ -163,7 +165,7 @@ For CI-only failures, use `skills/ci-troubleshooting.md` instead of the followin
 | `git status` is dirty after `make test`. | The target regenerated CRD, RBAC, or deepcopy files because the committed output did not match the generated result. | `may/Makefile` → `test`; review and commit the regenerated files |
 | `controller-gen` fails with `directory prefix . does not contain modules listed in go.work`. | A parent workspace `go.work` does not include this module. | Prefix the command with `GOWORK=off` |
 
-## 10. Code Standards
+## Code Standards
 
 - For Go coding standards used in this repo, see `skills/go-coding-standards.md`.
 - For testing and test-coding standards used in this repo, see `skills/testing-standards.md`.

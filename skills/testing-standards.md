@@ -77,9 +77,8 @@ r, err := s.Schedule(ctx, c)
 Expect(err).ShouldNot(HaveOccurred())
 Expect(r).ShouldNot(BeNil())
 
-// Error-only — be cautious: inlining panics if the call unexpectedly returns a nil error
-err := k8sClient.Delete(ctx, pod)
-Expect(err).ShouldNot(HaveOccurred())
+// Error-only — inline freely
+Expect(k8sClient.Delete(ctx, pod)).ShouldNot(HaveOccurred())
 ```
 
 Also consider line length: if inlining creates an overly long line due to large
@@ -183,7 +182,7 @@ stabilizes; they are the evidence that the pitfall stays fixed.
 | `BeforeEach` for shared setup | Same 5-line setup in every `It` |
 | Test MAY's behavior | Test that `context.WithCancel` works |
 | Capture `(value, error)` returns | Inline multi-return calls into `Expect()` |
-| Think before inlining error-only returns | Blindly inline everything |
+| Inline error-only returns directly | Capture a temporary error only to assert it |
 
 ## Test Organization
 
