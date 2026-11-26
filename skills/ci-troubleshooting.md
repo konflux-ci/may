@@ -57,7 +57,7 @@ If a Tekton pipeline check fails, you can comment `/retest` on the PR to re-trig
 Ginkgo test failures. The GitHub Actions log shows which specs failed and the failure messages. To reproduce locally:
 
 ```bash
-make test -C <PATH>
+make -C <PATH> test
 ```
 
 ### e2e

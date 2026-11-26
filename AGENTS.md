@@ -30,3 +30,4 @@ Changes to the following paths require a write-access reviewer to approve them. 
 - Before opening a PR, writing a PR description, or interpreting CI results, read `skills/pr-workflow.md`.
 - When a CI check fails on a PR, read `skills/ci-troubleshooting.md`.
 - When working interactively on new features or significant changes, read `skills/brainstorming-workflow.md` before making changes.
+- Before making any code change in MAY, read `skills/developer-guide.md`. It is the entry point to the codebase.

@@ -2,7 +2,8 @@
 name: pr-workflow
 description: >
   Use when opening, monitoring, or iterating on a pull request in MAY,
-  including PR body template, CI interpretation, and commit conventions.
+  including PR body template, test and coverage requirements, CI interpretation,
+  and commit conventions.
 ---
 
 # PR Workflow
@@ -18,6 +19,19 @@ MAY is a service composed of several Kubernetes controllers. PRs target `main` o
 - About to open a PR or write a PR description
 - Iterating on a PR based on review feedback
 - Preparing commits for a change
+
+## Definition of Done
+
+A code change is not ready to report as complete, push, or open a PR until:
+
+- `make -C may test` or `make -C drivers/<name> test` passes for every affected module.
+- Existing specs are updated for changed behavior.
+- New behavior, branches, and error paths have new specs.
+- Coverage is part of the change: inspect `cover.out` and cover the new code. For the core module, `make -C may report-coverage` produces the HTML report.
+- Cluster-facing changes have the relevant e2e target run, or the PR states why it could not run.
+- Ginkgo/Gomega tests follow `skills/testing-standards.md`.
+
+Do not report coding work as complete from a code read or a compile-only check; run the checks yourself. If a test cannot run, say so explicitly and state what remains unverified.
 
 ## Branch Setup
 
@@ -58,14 +72,14 @@ Every PR follows this structure:
 ## Testing
 
 - <which tests cover this change and their results>
-- <e.g., "Added Ginkgo specs for the new handler — `make test` passes">
-- <e.g., "Existing acceptance tests in dumb-proxy/smart-proxy cover this path — both pass">
+- <e.g., "Added Ginkgo specs for the new Runner status path — `make -C may test` passes">
+- <e.g., "Existing e2e coverage in `may/test/e2e/statichost_test.go` covers this path — `make -C may test-e2e` passes">
 ```
 
 **Rules:**
 - **What** — Concise change list and Jira link. Don't explain why here.
 - **Why** — Motivation only. Keep it brief.
-- **Testing** — Show that appropriate tests were run and passed. This can be new tests you added or existing tests that cover the change. Reference the specific test type (unit, performance, acceptance) and confirm they pass.
+- **Testing** — Show that the required tests were run and passed: the exact `make` target or targets, the modules covered, and the result. State which existing specs were updated and which new specs cover new behavior. If an e2e target could not run, say why.
 
 ## Commit Conventions
 
@@ -94,7 +108,7 @@ Trailers (at end of commit message body). Use the actual agent/tool identity:
 | **agent-files-enforce** | Applies the `agent-config-review-required` label when protected agent config files are changed. Posts the `Agent File Policy` commit status — blocks merge until a write-access reviewer removes the label. |
 
 **CI caveats:**
-- Acceptance tests can be flaky due to Kind cluster setup — if logs show no relevant errors, rerun with `gh run rerun <run-id> --failed`.
+- E2E tests can be flaky due to Kind cluster setup — if logs show no relevant errors, rerun with `gh run rerun <run-id> --failed`.
 - Tekton pipeline failures are best investigated manually through the Konflux UI. Use `/retest` to re-trigger, but don't try to diagnose these yourself.
 
 ## Interactive Sessions
@@ -105,7 +119,8 @@ In interactive sessions (human + agent), always confirm with the human before pu
 
 | Mistake | Fix |
 |---------|-----|
-| Not running tests before pushing | Run `make -C <PATH> lint test test-e2e` locally, mention results in Testing. |
+| Reporting work complete or pushing without running tests | Run `make -C may test` or `make -C drivers/<name> test` and record the result in Testing. |
+| Adding code without tests or coverage | Update existing specs and add specs for new behavior; inspect `cover.out`. Follow `skills/testing-standards.md`. |
 | Putting explanation in Testing instead of evidence | Testing = which tests ran and passed. Why = explanation. |
 | Branching from a stale main | Always fetch and reset from origin before branching. |
 | Missing Jira key in commit message | Prefix every commit with `KFLUXINFRA-1234`. |
