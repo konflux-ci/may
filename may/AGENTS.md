@@ -15,6 +15,11 @@
 
 - `api/` — types
 - `internal/controller/` — controllers
+  - `provisioner/dynamichost/` — DynamicHost, DynamicHostProvisioner, DynamicHostGarbageCollector, and DynamicHostAutoScaler reconcilers
+  - `provisioner/runner/` — Runner controller
+  - `provisioner/runnerhook/` — RunnerHook controller
+  - `provisioner/statichost/` — StaticHost controller
+  - `provisioner/constants/` — shared provisioner constants
 - `internal/webhook/` — webhooks
 - `config/` — manifests
 
@@ -22,7 +27,7 @@
 
 - Do not edit `**/zz_generated.*`, `config/crd/bases/*`, `config/rbac/role.yaml`, `PROJECT` — regenerate with `make manifests` / `make generate`.
 - Keep `// +kubebuilder:scaffold:*` markers.
-- Do not move files.
+- Do not move or rename files referenced by kubebuilder scaffolding markers (`// +kubebuilder:scaffold:*`) or generated manifests — regenerate with `make manifests` / `make generate`.
 
 ## Gotchas
 
